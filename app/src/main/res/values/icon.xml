@@ -1,0 +1,4 @@
+<resources>
+    <!-- Sampled from the artwork so the adaptive background matches the tile exactly. -->
+    <color name="icon_background">#FF141518</color>
+</resources>

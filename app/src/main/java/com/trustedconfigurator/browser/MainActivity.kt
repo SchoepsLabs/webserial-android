@@ -1,0 +1,602 @@
+package com.trustedconfigurator.browser
+
+import android.annotation.SuppressLint
+import android.app.DownloadManager
+import android.content.ActivityNotFoundException
+import android.content.Context
+import android.content.Intent
+import android.hardware.usb.UsbDevice
+import android.net.Uri
+import android.os.Build
+import android.os.Bundle
+import android.view.MenuItem
+import android.view.WindowManager
+import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputMethodManager
+import android.webkit.URLUtil
+import android.webkit.ValueCallback
+import android.webkit.WebChromeClient
+import android.webkit.WebResourceRequest
+import android.webkit.WebSettings
+import android.webkit.WebView
+import android.webkit.WebViewClient
+import android.widget.PopupMenu
+import androidx.activity.addCallback
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
+import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.lifecycleScope
+import androidx.webkit.WebViewCompat
+import androidx.webkit.WebViewFeature
+import com.google.android.material.snackbar.Snackbar
+import com.trustedconfigurator.browser.bridge.BridgeInstaller
+import com.trustedconfigurator.browser.bridge.BrowserSettings
+import com.trustedconfigurator.browser.bridge.ConfiguratorBridge
+import com.trustedconfigurator.browser.bridge.DevicePicker
+import com.trustedconfigurator.browser.bridge.GrantStore
+import com.trustedconfigurator.browser.bridge.OriginPolicy
+import com.trustedconfigurator.browser.bridge.SharedPreferencesGrantPersistence
+import com.trustedconfigurator.browser.bridge.SharedPreferencesSitePersistence
+import com.trustedconfigurator.browser.bridge.SitePolicy
+import com.trustedconfigurator.browser.databinding.ActivityMainBinding
+import com.trustedconfigurator.browser.files.FileBridge
+import com.trustedconfigurator.browser.files.FilePicker
+import com.trustedconfigurator.browser.usb.TransferKind
+import com.trustedconfigurator.browser.usb.TransferLog
+import com.trustedconfigurator.browser.usb.UsbHub
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
+import kotlin.coroutines.resume
+
+/**
+ * The browser.
+ *
+ * Loads the configurators live from the network and adds three things a WebView
+ * does not have: Web Serial, WebUSB, and the File System Access API — the last
+ * because otherwise every "save preset" and "save blackbox log" button is a
+ * no-op.
+ */
+class MainActivity : AppCompatActivity(), DevicePicker, FilePicker {
+
+    private lateinit var binding: ActivityMainBinding
+    private lateinit var hub: UsbHub
+    private lateinit var bridge: ConfiguratorBridge
+    private lateinit var installer: BridgeInstaller
+    private lateinit var policy: SitePolicy
+    private lateinit var settings: BrowserSettings
+    private lateinit var files: FileBridge
+
+    private var currentOrigin: String? = null
+    private var chromeExpanded = true
+
+    // SAF pickers. Registered once; each launch resumes the coroutine that asked.
+    private var pendingCreate: ((Uri?) -> Unit)? = null
+    private var pendingOpen: ((Uri?) -> Unit)? = null
+    private var pendingFileChooser: ValueCallback<Array<Uri>>? = null
+
+    private val createDocument = registerForActivityResult(ActivityResultContracts.CreateDocument("*/*")) { uri ->
+        pendingCreate?.invoke(uri)
+        pendingCreate = null
+    }
+
+    private val openDocument = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        pendingOpen?.invoke(uri)
+        pendingOpen = null
+    }
+
+    private val chooseForInput = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        pendingFileChooser?.onReceiveValue(if (uri == null) emptyArray() else arrayOf(uri))
+        pendingFileChooser = null
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        binding = ActivityMainBinding.inflate(layoutInflater)
+        setContentView(binding.root)
+
+        settings = BrowserSettings(this)
+        policy = SitePolicy(SharedPreferencesSitePersistence(this))
+        files = FileBridge(this, this)
+        hub = UsbHub(this, GrantStore(SharedPreferencesGrantPersistence(this)))
+        bridge = ConfiguratorBridge(hub, this, policy, files, lifecycleScope)
+
+        hub.onDeviceAttached = { device -> bridge.notifyDeviceAttached(device) }
+        hub.onDeviceDetached = { device -> bridge.notifyDeviceDetached(device) }
+        hub.onDfuHandoff = { device, handoffs ->
+            toast(getString(R.string.dfu_detected, hub.describe(device), handoffs.first().reason.name))
+        }
+        hub.start()
+
+        configureWebView()
+        installer = BridgeInstaller(this, binding.webView, policy, bridge)
+        warnIfBridgeUnavailable()
+        installer.install()
+
+        wireChrome()
+        applyFullScreen(settings.fullScreen)
+
+        if (savedInstanceState == null) {
+            val requested = intent?.dataString?.let { OriginPolicy.toUrl(it) }
+            binding.webView.loadUrl(requested ?: settings.lastUrl)
+        }
+
+        onBackPressedDispatcher.addCallback(this) {
+            when {
+                settings.fullScreen -> applyFullScreen(false)
+                binding.webView.canGoBack() -> binding.webView.goBack()
+                else -> finish()
+            }
+        }
+    }
+
+    // ------------------------------------------------------------- chrome
+
+    private fun wireChrome() {
+        binding.addressBar.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == EditorInfo.IME_ACTION_GO) {
+                navigateTo(binding.addressBar.text.toString())
+                true
+            } else {
+                false
+            }
+        }
+        binding.menuButton.setOnClickListener { showMenu() }
+        binding.usbIndicator.setOnClickListener { toggleUsbForCurrentSite() }
+        binding.exitFullScreen.setOnClickListener { applyFullScreen(false) }
+
+        installScrollReporter()
+    }
+
+    /**
+     * Hides the address bar while reading.
+     *
+     * The configurators scroll an inner element rather than the document, so the
+     * WebView's own scrollY never changes — AppBarLayout's scroll flags and a
+     * View scroll listener are both dead ends. A tiny injected script reports the
+     * direction instead. It runs on every origin and is a separate channel from
+     * the USB bridge: all it can do is show or hide this app's own toolbar.
+     */
+    private fun installScrollReporter() {
+        if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT) ||
+            !WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)
+        ) {
+            return
+        }
+        val anyOrigin = setOf("*")
+        WebViewCompat.addWebMessageListener(
+            binding.webView,
+            CHROME_CHANNEL,
+            anyOrigin,
+        ) { _, message, _, _, _ ->
+            if (settings.fullScreen || binding.addressBar.hasFocus()) return@addWebMessageListener
+            when {
+                message.data?.contains("collapse") == true -> setChromeExpanded(false)
+                message.data?.contains("expand") == true -> setChromeExpanded(true)
+            }
+        }
+        WebViewCompat.addDocumentStartJavaScript(
+            binding.webView,
+            assets.open(CHROME_ASSET).bufferedReader().use { it.readText() },
+            anyOrigin,
+        )
+    }
+
+    private fun setChromeExpanded(expanded: Boolean) {
+        if (chromeExpanded == expanded) return
+        chromeExpanded = expanded
+        binding.appBar.setExpanded(expanded, true)
+    }
+
+    private fun navigateTo(input: String) {
+        val url = OriginPolicy.toUrl(input)
+        if (url == null) {
+            toast(getString(R.string.bad_address))
+            return
+        }
+        hideKeyboard()
+        binding.addressBar.clearFocus()
+        binding.webView.loadUrl(url)
+    }
+
+    private fun showMenu() {
+        val popup = PopupMenu(this, binding.menuButton)
+        val menu = popup.menu
+
+        policy.sites().forEachIndexed { index, site ->
+            menu.add(GROUP_SITES, index, index, site.title)
+        }
+        menu.add(GROUP_ACTIONS, ID_RELOAD, 100, R.string.menu_reload)
+        menu.add(GROUP_ACTIONS, ID_DESKTOP, 101, R.string.menu_desktop).apply {
+            isCheckable = true
+            isChecked = settings.desktopMode
+        }
+        menu.add(GROUP_ACTIONS, ID_FULLSCREEN, 102, R.string.menu_full_screen).apply {
+            isCheckable = true
+            isChecked = settings.fullScreen
+        }
+        menu.add(GROUP_ACTIONS, ID_SITES, 103, R.string.menu_sites)
+        menu.add(GROUP_ACTIONS, ID_DIAGNOSTICS, 104, R.string.menu_diagnostics)
+
+        popup.setOnMenuItemClickListener { item -> onMenuItem(item) }
+        popup.show()
+    }
+
+    private fun onMenuItem(item: MenuItem): Boolean {
+        if (item.groupId == GROUP_SITES) {
+            policy.sites().getOrNull(item.itemId)?.let { binding.webView.loadUrl(it.origin) }
+            return true
+        }
+        return when (item.itemId) {
+            ID_RELOAD -> {
+                binding.webView.reload(); true
+            }
+            ID_DESKTOP -> {
+                settings.desktopMode = !settings.desktopMode
+                applyDesktopMode()
+                binding.webView.reload()
+                true
+            }
+            ID_FULLSCREEN -> {
+                applyFullScreen(!settings.fullScreen); true
+            }
+            ID_SITES -> {
+                startActivity(Intent(this, SitesActivity::class.java)); true
+            }
+            ID_DIAGNOSTICS -> {
+                startActivity(Intent(this, DiagnosticsActivity::class.java)); true
+            }
+            else -> false
+        }
+    }
+
+    /**
+     * Hides the address bar and the system bars so the page owns the screen.
+     * The transient-swipe behaviour means a swipe from the edge brings the
+     * system bars back without leaving full screen.
+     */
+    private fun applyFullScreen(enabled: Boolean) {
+        settings.fullScreen = enabled
+        val controller = WindowInsetsControllerCompat(window, binding.root)
+        WindowCompat.setDecorFitsSystemWindows(window, !enabled)
+
+        // Without this the window still stops short of the notch, leaving a black
+        // band exactly where the address bar used to be — the space is given back
+        // by the layout but not by the window.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            window.attributes = window.attributes.apply {
+                layoutInDisplayCutoutMode = if (enabled) {
+                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                } else {
+                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT
+                }
+            }
+        }
+        if (enabled) {
+            controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            controller.hide(WindowInsetsCompat.Type.systemBars())
+        } else {
+            controller.show(WindowInsetsCompat.Type.systemBars())
+        }
+        /*
+         * The bar is collapsed to zero height rather than hidden. CoordinatorLayout
+         * never lays out a GONE child, so ScrollingViewBehavior would keep offsetting
+         * the WebView by the bar's last known bottom edge — the page would lose the
+         * bar but not get its space back. A zero-height bar is still laid out, so the
+         * offset really does become zero.
+         */
+        binding.appBar.layoutParams = binding.appBar.layoutParams.apply {
+            height = if (enabled) 0 else android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+        }
+        if (!enabled) {
+            setChromeExpanded(true)
+        }
+        binding.exitFullScreen.visibility = if (enabled) android.view.View.VISIBLE else android.view.View.GONE
+    }
+
+    private fun updateUsbIndicator() {
+        val allowed = policy.isUsbAllowed(currentOrigin)
+        binding.usbIndicator.imageTintList = ContextCompat.getColorStateList(
+            this,
+            if (allowed) R.color.usb_on else R.color.usb_off,
+        )
+    }
+
+    private fun toggleUsbForCurrentSite() {
+        val origin = currentOrigin ?: return
+        if (policy.isUsbAllowed(origin)) {
+            policy.setUsbEnabled(origin, false)
+            onPolicyChanged(getString(R.string.usb_disabled_for, origin))
+            return
+        }
+        AlertDialog.Builder(this)
+            .setTitle(getString(R.string.enable_usb_title, origin))
+            .setMessage(R.string.enable_usb_message)
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(R.string.enable_usb_confirm) { _, _ ->
+                policy.addSite(origin, binding.webView.title, usbEnabled = true)
+                onPolicyChanged(getString(R.string.usb_enabled_for, origin))
+            }
+            .show()
+    }
+
+    /**
+     * Re-registers both injections and reloads: origin rules are fixed at
+     * registration time and only apply to documents loaded afterwards.
+     */
+    private fun onPolicyChanged(message: String) {
+        installer.install()
+        updateUsbIndicator()
+        binding.webView.reload()
+        toast(message)
+    }
+
+    // ------------------------------------------------------------ webview
+
+    @SuppressLint("SetJavaScriptEnabled")
+    private fun configureWebView() {
+        with(binding.webView.settings) {
+            javaScriptEnabled = true
+            domStorageEnabled = true
+            databaseEnabled = true
+            // Pages are fetched over HTTPS and need no local file reach.
+            allowFileAccess = false
+            allowContentAccess = false
+            mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+            mediaPlaybackRequiresUserGesture = false
+            useWideViewPort = true
+            loadWithOverviewMode = true
+            builtInZoomControls = true
+            displayZoomControls = false
+            setSupportZoom(true)
+            javaScriptCanOpenWindowsAutomatically = true
+        }
+        applyDesktopMode()
+
+        binding.webView.webViewClient = BrowserClient()
+        binding.webView.webChromeClient = BrowserChromeClient()
+        binding.webView.setDownloadListener { url, userAgent, contentDisposition, mimeType, _ ->
+            startDownload(url, userAgent, contentDisposition, mimeType)
+        }
+        WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
+    }
+
+    /**
+     * Desktop mode is on by default: the configurators lay out for a wide window
+     * and their mobile layout hides most of the UI. Betaflight decides it is
+     * "native Android" from Capacitor, never the user agent, so overriding the
+     * UA here does not change which transport it picks.
+     */
+    private fun applyDesktopMode() {
+        val webSettings = binding.webView.settings
+        if (settings.desktopMode) {
+            webSettings.userAgentString = DESKTOP_USER_AGENT
+            webSettings.useWideViewPort = true
+            webSettings.loadWithOverviewMode = true
+            binding.webView.setInitialScale(DESKTOP_SCALE_PERCENT)
+        } else {
+            webSettings.userAgentString = null
+            binding.webView.setInitialScale(0)
+        }
+    }
+
+    private fun startDownload(url: String, userAgent: String?, contentDisposition: String?, mimeType: String?) {
+        val name = URLUtil.guessFileName(url, contentDisposition, mimeType)
+        // blob: and data: never reach here — the polyfill intercepts those and
+        // routes them through the save dialog instead.
+        if (!url.startsWith("http://") && !url.startsWith("https://")) {
+            toast(getString(R.string.download_failed, name))
+            return
+        }
+        try {
+            val request = DownloadManager.Request(Uri.parse(url))
+                .setMimeType(mimeType)
+                .addRequestHeader("User-Agent", userAgent)
+                .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                request.setDestinationInExternalPublicDir(android.os.Environment.DIRECTORY_DOWNLOADS, name)
+            } else {
+                // Before scoped storage, the public Downloads folder needs
+                // WRITE_EXTERNAL_STORAGE. The app-specific directory needs no
+                // permission on any version, which keeps this app permission-free.
+                request.setDestinationInExternalFilesDir(this, android.os.Environment.DIRECTORY_DOWNLOADS, name)
+            }
+            (getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager).enqueue(request)
+            toast(getString(R.string.download_started, name))
+        } catch (e: Exception) {
+            TransferLog.record(TransferKind.ERROR, currentOrigin ?: "-", name, "Download failed: ${e.message}")
+            toast(getString(R.string.download_failed, name))
+        }
+    }
+
+    private inner class BrowserClient : WebViewClient() {
+
+        override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+            if (!request.isForMainFrame) return false
+            val url = request.url.toString()
+            // Anything that is not plain https (mailto:, intent:, market:) is the
+            // system's business, not this browser's.
+            if (OriginPolicy.normalize(url) != null) return false
+            return try {
+                startActivity(Intent(Intent.ACTION_VIEW, request.url))
+                true
+            } catch (e: ActivityNotFoundException) {
+                toast(getString(R.string.no_browser))
+                true
+            }
+        }
+
+        override fun onPageStarted(view: WebView, url: String, favicon: android.graphics.Bitmap?) {
+            setChromeExpanded(true)
+            currentOrigin = OriginPolicy.normalize(url)
+            binding.addressBar.setText(url)
+            updateUsbIndicator()
+        }
+
+        override fun onPageFinished(view: WebView, url: String) {
+            currentOrigin = OriginPolicy.normalize(url)
+            binding.addressBar.setText(url)
+            updateUsbIndicator()
+            settings.lastUrl = url
+        }
+    }
+
+    private inner class BrowserChromeClient : WebChromeClient() {
+
+        override fun onProgressChanged(view: WebView, newProgress: Int) {
+            binding.progress.progress = newProgress
+            binding.progress.visibility = if (newProgress in 1..99) {
+                android.view.View.VISIBLE
+            } else {
+                android.view.View.GONE
+            }
+        }
+
+        /** `<input type="file">` — firmware, presets, blackbox logs, ESC hex files. */
+        override fun onShowFileChooser(
+            webView: WebView,
+            filePathCallback: ValueCallback<Array<Uri>>,
+            fileChooserParams: FileChooserParams,
+        ): Boolean {
+            pendingFileChooser?.onReceiveValue(null)
+            pendingFileChooser = filePathCallback
+            val types = fileChooserParams.acceptTypes
+                .filter { it.isNotBlank() && it.contains('/') }
+                .toTypedArray()
+            return try {
+                chooseForInput.launch(if (types.isEmpty()) arrayOf("*/*") else types)
+                true
+            } catch (e: ActivityNotFoundException) {
+                pendingFileChooser = null
+                filePathCallback.onReceiveValue(null)
+                false
+            }
+        }
+    }
+
+    // ------------------------------------------------------- FilePicker
+
+    override suspend fun createDocument(suggestedName: String, mimeType: String): Uri? =
+        withContext(Dispatchers.Main) {
+            suspendCancellableCoroutine { continuation ->
+                pendingCreate = { uri -> if (continuation.isActive) continuation.resume(uri) }
+                try {
+                    createDocument.launch(suggestedName)
+                } catch (e: Exception) {
+                    pendingCreate = null
+                    if (continuation.isActive) continuation.resume(null)
+                }
+            }
+        }
+
+    override suspend fun openDocument(mimeTypes: Array<String>): Uri? =
+        withContext(Dispatchers.Main) {
+            suspendCancellableCoroutine { continuation ->
+                pendingOpen = { uri -> if (continuation.isActive) continuation.resume(uri) }
+                try {
+                    openDocument.launch(mimeTypes)
+                } catch (e: Exception) {
+                    pendingOpen = null
+                    if (continuation.isActive) continuation.resume(null)
+                }
+            }
+        }
+
+    // ------------------------------------------------------ DevicePicker
+
+    override suspend fun choose(origin: String, prompt: String, devices: List<UsbDevice>): UsbDevice? =
+        withContext(Dispatchers.Main) {
+            suspendCancellableCoroutine { continuation ->
+                val labels = devices.map { device ->
+                    "%s\n%04X:%04X  %s".format(
+                        device.productName ?: getString(R.string.unnamed_device),
+                        device.vendorId,
+                        device.productId,
+                        device.deviceName,
+                    )
+                }.toTypedArray()
+
+                // The origin belongs in the title: AlertController only renders
+                // the item list when no message is set, so setMessage() here
+                // would hide every device.
+                val dialog = AlertDialog.Builder(this@MainActivity)
+                    .setTitle(getString(R.string.picker_title, prompt, origin))
+                    .setItems(labels) { _, which ->
+                        if (continuation.isActive) continuation.resume(devices[which])
+                    }
+                    .setNegativeButton(android.R.string.cancel) { _, _ ->
+                        if (continuation.isActive) continuation.resume(null)
+                    }
+                    .setOnCancelListener { if (continuation.isActive) continuation.resume(null) }
+                    .create()
+
+                continuation.invokeOnCancellation { dialog.dismiss() }
+                dialog.show()
+            }
+        }
+
+    // ------------------------------------------------------------- misc
+
+    private fun warnIfBridgeUnavailable() {
+        val missing = installer.missingFeatures()
+        if (missing.isEmpty()) return
+        TransferLog.record(
+            TransferKind.ERROR,
+            "-",
+            "-",
+            "WebView is missing ${missing.joinToString()}; USB support is unavailable",
+        )
+        AlertDialog.Builder(this)
+            .setTitle(R.string.unsupported_webview_title)
+            .setMessage(getString(R.string.unsupported_webview_message, missing.joinToString()))
+            .setPositiveButton(android.R.string.ok, null)
+            .show()
+    }
+
+    private fun hideKeyboard() {
+        val manager = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+        manager.hideSoftInputFromWindow(binding.addressBar.windowToken, 0)
+    }
+
+    private fun toast(message: String) {
+        Snackbar.make(binding.root, message, Snackbar.LENGTH_LONG).show()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Sites screen may have changed who can use USB.
+        installer.install()
+        updateUsbIndicator()
+    }
+
+    override fun onDestroy() {
+        bridge.closeAll()
+        files.closeAll()
+        hub.stop()
+        binding.webView.destroy()
+        super.onDestroy()
+    }
+
+    private companion object {
+        const val GROUP_SITES = 1
+        const val GROUP_ACTIONS = 2
+        const val ID_RELOAD = 1000
+        const val ID_DESKTOP = 1001
+        const val ID_FULLSCREEN = 1002
+        const val ID_SITES = 1003
+        const val ID_DIAGNOSTICS = 1004
+
+        /** Chrome on desktop Linux; keeps the configurators in their wide layout. */
+        const val DESKTOP_USER_AGENT =
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36"
+        const val DESKTOP_SCALE_PERCENT = 50
+
+        const val CHROME_CHANNEL = "AndroidBrowserChrome"
+        const val CHROME_ASSET = "bridge/chrome.js"
+    }
+}

@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Betaflight's built-in serial and DFU device lists (src/js/protocols/devices.js),
+    in decimal as the USB manifest filter requires.
+
+    This list exists so Android can offer a persistent "open this app by default"
+    grant for these boards. It is NOT an access-control list: Betaflight refreshes
+    its own VID/PID table over the network, and the security boundary here is the
+    origin allow-list plus explicit user device selection.
+-->
+<resources>
+
+    <!-- Serial: USB-UART bridges and virtual COM ports -->
+    <usb-device vendor-id="1027" product-id="24577" />  <!-- FTDI FT232R -->
+    <usb-device vendor-id="1155" product-id="12886" />  <!-- STM32 HID mode -->
+    <usb-device vendor-id="1155" product-id="14158" />  <!-- ST-Link VCP -->
+    <usb-device vendor-id="1155" product-id="22336" />  <!-- STM32 VCP -->
+    <usb-device vendor-id="4292" product-id="60000" />  <!-- CP210x -->
+    <usb-device vendor-id="4292" product-id="60001" />  <!-- CP210x -->
+    <usb-device vendor-id="4292" product-id="60002" />  <!-- CP210x -->
+    <usb-device vendor-id="10473" product-id="394" />   <!-- GD32 VCP -->
+    <usb-device vendor-id="11836" product-id="22336" /> <!-- AT32 VCP -->
+    <usb-device vendor-id="12619" product-id="22336" /> <!-- APM32 VCP -->
+    <usb-device vendor-id="11914" product-id="9" />     <!-- RP2040 VCP -->
+    <usb-device vendor-id="6790" product-id="29986" />  <!-- CH340 variant -->
+    <usb-device vendor-id="6790" product-id="29987" />  <!-- CH340 -->
+    <usb-device vendor-id="6790" product-id="21795" />  <!-- CH341 -->
+    <usb-device vendor-id="6790" product-id="30084" />  <!-- CH340S -->
+    <usb-device vendor-id="14743" product-id="22336" /> <!-- X32 VCP -->
+
+    <!-- DFU bootloaders: the modes a flight controller re-enumerates into -->
+    <usb-device vendor-id="1155" product-id="57105" />  <!-- STM32 DFU -->
+    <usb-device vendor-id="10473" product-id="393" />   <!-- GD32 DFU -->
+    <usb-device vendor-id="11836" product-id="57105" /> <!-- AT32F435 DFU -->
+    <usb-device vendor-id="12619" product-id="262" />   <!-- APM32 DFU -->
+    <usb-device vendor-id="11914" product-id="15" />    <!-- RP2040 bootloader -->
+    <usb-device vendor-id="14743" product-id="57105" /> <!-- X32 DFU -->
+
+</resources>

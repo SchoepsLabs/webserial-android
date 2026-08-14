@@ -1,0 +1,12 @@
+<resources>
+    <!-- Chrome is deliberately near-black: both configurators ship dark themes,
+         so a coloured bar reads as a foreign frame around the page. -->
+    <color name="chrome_background">#FF16171A</color>
+    <color name="chrome_text">#FFE6E6EA</color>
+    <color name="chrome_hint">#FF8A8D94</color>
+    <color name="address_field">#FF26282E</color>
+    <color name="page_background">#FF101114</color>
+    <color name="accent">#FFFFC107</color>
+    <color name="usb_on">#FF4CD964</color>
+    <color name="usb_off">#FF6E7178</color>
+</resources>

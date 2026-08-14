@@ -1,0 +1,24 @@
+# Signing material — never commit.
+# Losing release.keystore means you can never ship an update that existing
+# installs will accept; leaking it means anyone can ship one that they will.
+release.keystore
+*.keystore
+*.jks
+keystore.properties
+
+# Machine-specific SDK paths
+local.properties
+
+# Build output. APKs belong on a release page, not in git history — they are
+# binary, they never delta-compress, and they bloat every clone forever.
+.gradle/
+build/
+app/build/
+*.apk
+*.aab
+.icontmp/
+
+# IDE
+.idea/
+*.iml
+.DS_Store

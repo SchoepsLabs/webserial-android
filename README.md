@@ -1,0 +1,393 @@
+# Configurator Browser
+
+An Android browser that gives web-based FPV configurators the **Web Serial** and
+**WebUSB** APIs that Chrome on Android does not ship — backed by the Android USB
+Host API — so you can configure and flash a flight controller from your phone.
+
+Nothing is bundled. Every page is loaded live from the network.
+
+<p>
+  <img src="docs/screenshot-browser.png" width="260" alt="Betaflight Configurator running in the app">
+  <img src="docs/screenshot-picker.png" width="260" alt="Native device picker">
+  <img src="docs/screenshot-diagnostics.png" width="260" alt="USB diagnostics screen">
+</p>
+
+## Install
+
+Grab the APK from [Releases](../../releases) and open it on your phone. Android
+will ask you to allow installing from unknown sources.
+
+For automatic updates, add the releases page to
+[Obtainium](https://github.com/ImranR98/Obtainium).
+
+Requires **Android 7.0+**, a phone with **USB host** support, and an OTG cable or
+hub. Android System WebView must be recent enough for `DOCUMENT_START_SCRIPT`
+(WebView 106+, i.e. anything updated since 2022) — the app tells you if it is not.
+
+## What it knows about
+
+| Site | |
+| --- | --- |
+| <https://app.betaflight.com> | Betaflight Configurator |
+| <https://esc-configurator.com> | ESC Configurator (BLHeli_S / Bluejay / AM32) |
+| <https://am32.ca> | AM32 Configurator |
+| <https://expresslrs.github.io> | ExpressLRS Web Flasher |
+
+These four ship with USB enabled. You can type **any** other address into the bar
+— it is a real browser — but a site only reaches USB after you explicitly turn it
+on for that origin, behind a warning. See [Sites and USB access](#sites-and-usb-access).
+
+INAV and Rotorflight have no web configurator, so there is nothing to point at.
+`blackbox.betaflight.com` is deliberately absent: the configurator now carries a
+Blackbox Viewer tab of its own, and a log viewer never needs a serial port.
+
+## Status
+
+Verified against real hardware (Pixel 8 Pro, Android 16, Betaflight STM32F411):
+
+- Betaflight connects, streams live telemetry, and reads firmware info over MSP
+- ESC Configurator connects through the 4-way passthrough
+- A board sent to DFU is detected, re-authorised and picked up by the configurator
+- Per-origin isolation holds: only the site you picked the device in can see it
+
+**Not yet proven on hardware**, and worth knowing before you rely on it:
+
+| | |
+| --- | --- |
+| Saving files (presets, blackbox dumps) | unit-tested only, never written a real file |
+| WebUSB transfers (`controlTransferIn` etc.) | only run during an actual flash |
+| CP210x / CH34x / FTDI drivers | written from the Linux drivers, never met hardware — this is what an ESP32 board would use |
+| Android 7–9 | minSdk claims support; only ever run on 16 |
+
+CDC-ACM — every STM32/AT32/GD32/APM32/X32/RP2040 flight controller — is the one
+serial driver proven in the field.
+
+## Build
+
+```bash
+./gradlew assembleDebug          # app/build/outputs/apk/debug/
+./gradlew assembleRelease        # needs keystore.properties, see below
+```
+
+Run the tests:
+
+```bash
+./gradlew testDebugUnitTest && node --test "js-tests/**/*.test.mjs"
+```
+
+Release signing reads `keystore.properties` from the project root (gitignored):
+
+```properties
+storeFile=release.keystore
+storePassword=...
+keyAlias=...
+keyPassword=...
+```
+
+---
+
+## What the two configurators actually call
+
+Mapped by reading the repositories, not from the specs. Line references are to the
+upstream `master` at the time of writing; the deployed builds may lag, so treat the API
+*surface* as the contract rather than the exact lines.
+
+### Betaflight Configurator — `src/js/protocols/WebSerial.js`
+
+| Call | Detail that matters |
+| --- | --- |
+| `navigator.serial.addEventListener("connect"/"disconnect")` | reads **`e.target`**, and matches the removed device with `port.port === e.target` — so the event must be dispatched on the `SerialPort` |
+| `navigator.serial.getPorts()` | rebuilt on every device event; port objects are keyed in a `WeakMap`, so the same device must return the *same object* |
+| `navigator.serial.requestPort(options)` | `{filters: [{usbVendorId, usbProductId}]}` or `{}` |
+| `port.getInfo()` | `{usbVendorId, usbProductId}`, used for the display name |
+| `port.open({baudRate})` / `port.close()` | |
+| `port.writable.getWriter()` / `port.readable.getReader()` | uses `reader.cancel()`, `releaseLock()`, and checks `reader.locked` |
+| `port.addEventListener("disconnect")` | **the port itself is an EventTarget** |
+
+### Betaflight Configurator — `src/js/protocols/WebUsbDfuTransport.js`, `UsbDfuDescriptors.js`
+
+| Call | Detail that matters |
+| --- | --- |
+| `navigator.usb.addEventListener("connect"/"disconnect")` | reads **`e.device`** |
+| `navigator.usb.getDevices()` | polled by `waitForDfuDevice()` — this *is* the DFU re-enumeration detector |
+| `navigator.usb.requestDevice({filters})` | reads `deviceVersionMajor/Minor/Subminor` off the result |
+| `device.open()`, `close()`, `selectConfiguration(1)` | called only when `device.configuration === null`, so it must start null |
+| `device.claimInterface()`, `releaseInterface()` | |
+| `device.reset()` | used by `usbdfu.js` as the last step of a flash — **not** in the original requirement list |
+| `controlTransferIn(setup, length)` → `{status, data}` | **must not reject on a stall.** The descriptor layer decides what a stall means; an unsupported LANGID read is recoverable. `data` is consumed as a `DataView` |
+| `controlTransferOut(setup, data)` → `{status}` | |
+
+DFU descriptors are read through **raw `GET_DESCRIPTOR` control transfers**, not through
+`device.configurations`, so both `standard`/`device` and `class`/`interface` request
+combinations have to work. Neither app calls `transferIn`/`transferOut`; they are
+implemented anyway.
+
+### ESC Configurator — `src/utils/LocalStorage.js`, `Serial.js`, `Containers/App/index.jsx`
+
+| Call | Detail that matters |
+| --- | --- |
+| `'serial' in navigator` | feature detection — `navigator.serial` must be a real own property |
+| `navigator.serial.requestPort()` | **called with no arguments at all** |
+| `getPorts()`, `getInfo()`, `open({baudRate})`, `readable`/`writable`, `close()` | teardown order is `reader.cancel()` → `releaseLock()` → `writer.releaseLock()` → `port.close()` |
+
+ESC Configurator uses no WebUSB; it reaches ESCs through the flight controller's 4-way
+MSP passthrough.
+
+### One thing that could have broken everything
+
+Betaflight's `isAndroid()` (`src/js/utils/checkCompatibility.js:58`) tests
+`Capacitor.isNativePlatform()`, **not** the User-Agent. In a plain WebView it is false, so
+the app takes the ordinary `navigator.serial` path. No UA spoofing is needed, and adding
+any would be actively harmful.
+
+---
+
+## Design
+
+```
+   app.betaflight.com / esc-configurator.com   (live, over the network)
+                     │
+        polyfill.js  │  injected at document start, origin-scoped
+                     │  navigator.serial + navigator.usb
+                     ▼
+        AndroidConfiguratorBridge     WebMessageListener, origin-scoped
+                     │                JSON RPC, binary as base64
+                     ▼
+             ConfiguratorBridge       op dispatch, per-origin handles
+                     │
+        ┌────────────┼─────────────┐
+        ▼            ▼             ▼
+   SerialSession  UsbSession    UsbHub
+   + drivers                    devices, permissions, grants,
+   CDC-ACM                      attach/detach, DFU handoff
+   CP210x CH34x FTDI
+```
+
+<a id="sites-and-usb-access"></a>
+
+### Sites and USB access
+
+Navigation and USB are deliberately separate questions. Navigation is open —
+it is a browser, you can type any address. USB is not.
+
+- The four configurators above ship with USB enabled.
+- Any other site starts with USB **off**. Enabling it takes an explicit tap on
+  the USB chip in the address bar (or the switch under *Sites*), and shows a
+  warning first. A stray tap on the switch bounces back until the dialog is
+  accepted.
+- Access can be revoked at any time, including for the built-ins.
+
+Because origin rules are fixed when the injections are registered, changing the
+policy re-registers both and reloads the page — a site cannot gain or keep access
+mid-document.
+
+Desktop Chrome hands `navigator.serial` to *every* site and relies on the device
+picker alone. This app does not, because a WebView has no site isolation to fall
+back on: the picker is the second gate here, not the only one.
+
+### Saving and opening files
+
+A WebView has no File System Access API and silently drops `blob:` downloads, so
+before this layer existed **every save button in both configurators did nothing**
+— presets, CLI diffs, blackbox dumps, ESC's `dump.hex`.
+
+Four mechanisms cover it:
+
+| Path | Used by |
+| --- | --- |
+| `showSaveFilePicker` / `showOpenFilePicker` → Storage Access Framework | Betaflight's preferred path (`src/js/FileSystem.js`), including its streaming blackbox writer |
+| `<a download>` with a `blob:`/`data:` href, intercepted | ESC's `dump.hex` and log export, Betaflight's blackbox-viewer and backups |
+| `<input type="file">` → `onShowFileChooser` | firmware, presets, ESC hex files |
+| `http(s)` downloads → `DownloadManager` | anything served as a normal file |
+
+The interception patches `HTMLAnchorElement.prototype.click` rather than only
+listening for click events, because a page is free to build an anchor and click
+it without ever inserting it into the document — a listener would miss those.
+Writes are streamed and chunked so a multi-megabyte blackbox log never becomes
+one oversized bridge message.
+
+### Never expose native USB to untrusted sites
+
+Four independent layers, in order of what an attacker would have to defeat:
+
+1. **`addDocumentStartJavaScript` is origin-scoped.** A page without USB access never
+   receives the polyfill, so `navigator.serial` and `navigator.usb` simply do not exist
+   there.
+2. **`addWebMessageListener` is origin-scoped.** The `AndroidConfiguratorBridge` object is
+   not injected off-list. There is deliberately **no `addJavascriptInterface` anywhere** —
+   that one is global to every origin.
+3. **Every inbound message re-checks the origin** (`OriginPolicy.isAllowed`) rather than
+   trusting WebView's rule matching. `normalize()` rejects non-https schemes and URLs that
+   smuggle a different authority through userinfo (`https://app.betaflight.com@evil.test/`).
+4. **Grants are per-origin.** Web Serial's `getPorts()` and WebUSB's `getDevices()` return
+   only devices *that origin* was granted, so allowed sites cannot enumerate each
+   other's hardware. Device access always requires an explicit native picker
+   selection plus the Android USB permission dialog.
+
+Main-frame navigation off the allow-list is handed to the system browser, so the app does
+not quietly become a general-purpose browser.
+
+### DFU re-enumeration
+
+This is the sharpest edge in the whole app. A flight controller entering DFU mode drops
+off the bus and comes back as a **different `UsbDevice` instance** with a different
+VID/PID — and Android grants USB permission per instance. Untreated, a permission dialog
+appears in the middle of a flash while `waitForDfuDevice()` polls a `getDevices()` that
+returns nothing.
+
+Three things address it:
+
+- `res/xml/device_filter.xml` + the manifest `USB_DEVICE_ATTACHED` filter let the user make
+  this app the default handler for these boards, so the grant persists.
+- `DfuTransition` opens a 30-second window when a *granted* device detaches. A bootloader
+  attaching inside that window is matched back to the origin by serial number, then by
+  vendor, then — only if exactly one board is outstanding — by being the sole candidate.
+  Two ambiguous candidates fall back to the normal prompt rather than guessing.
+- On a matched handoff the app requests USB permission immediately, so the device is
+  visible to `getDevices()` before the page's poll gives up.
+
+`GrantStore` keys a grant on VID/PID/serial rather than the Android device path, which
+changes on every re-enumeration. Because Android hides the serial number until permission
+is granted, an unknown serial on either side matches on VID/PID — otherwise a grant would
+evaporate at the exact moment permission arrived.
+
+### Serial drivers
+
+| Driver | Devices | DTR/RTS | Break |
+| --- | --- | --- | --- |
+| CDC-ACM | STM32, AT32, GD32, APM32, X32, RP2040 VCP — effectively every FC | `SET_CONTROL_LINE_STATE` | yes |
+| CP210x | Silicon Labs USB-UART | `SET_MHS` with a write mask | yes |
+| CH34x | WCH CH340/CH341 | vendor modem-control write | no (reported as unsupported) |
+| FTDI | FT232R and relatives | `SIO_MODEM_CTRL` | yes |
+
+The FTDI read path strips the two modem-status bytes the chip prepends to *every* USB
+packet — per packet, not per transfer, or the stream corrupts every 64 bytes.
+
+`DeviceCapabilities` decides from the interface descriptors whether a device is offered to
+Web Serial, to WebUSB, or both, so a DFU bootloader does not appear as a bogus serial port.
+
+### Diagnostics
+
+`DiagnosticsActivity` is native rather than a page in the WebView, so it still works when
+the bridge is the broken thing. It shows attached devices with interfaces, alternates and
+endpoints; Android permission state; which polyfill each device is exposed through;
+per-origin authorisations; and a bounded ring of every transfer that crossed the bridge,
+including DFU handoff decisions and rejected messages.
+
+---
+
+## Tests
+
+**JS bridge — 55 tests, `node --test "js-tests/**/*.test.mjs"`.** These load the *shipped*
+`app/src/main/assets/bridge/polyfill.js` into a `node:vm` context against a mock bridge, so
+there is no second copy to drift. The ones that matter most pin the behaviours that pass a
+naive test but break real hardware:
+
+- a serial connect/disconnect event has `event.target === port`
+- a usb connect event has `event.device`
+- the port's own `disconnect` listener fires
+- a stalled `controlTransferIn` resolves `{status: "stall"}` instead of rejecting
+- `device.reset()` resolves even when native fails it
+- `requestPort()` with no arguments
+- the same handle always returns the same object
+- a 200 KB write survives base64 chunking byte-for-byte
+
+**Kotlin — 71 tests, `./gradlew testDebugUnitTest`.** Base64 round-trips including a 512 KB
+payload, RPC framing and error mapping, filter parsing in both spellings, origin policy
+including look-alike hosts and userinfo smuggling, per-origin grant isolation and the
+serial-number matching rule, the DFU handoff state machine, `bmRequestType` assembly, and
+the handle registry — where a test pins that one CDC board gets a *distinct* handle per
+role, because collapsing them makes a detach announce only one of the two.
+
+## Verified on hardware
+
+Pixel 8 Pro, Android 16, WebView 150, against a **Betaflight STM32F411** flight controller
+(`0483:5740`, CDC-ACM: interface 0 class `02/02/01` with an interrupt endpoint, interface 1
+class `0A/00/00` with a bulk pair).
+
+Betaflight Configurator 2026.6.1, loaded live, reported:
+
+```
+User Agent: [object NavigatorUAData]
+Native: false      Android: false      Tauri: false     ← plain web path, no UA spoofing
+Serial: true       USB: true                            ← both polyfills detected
+[WEBSERIAL] User selected SERIAL device from permissions: serial_0
+[WEBSERIAL] Connection opened with ID: serial_0, Baud: 115200
+[SERIAL-BACKEND] Requesting configuration data
+Fw git rev: efef897                                     ← real MSP data read off the board
+Arming disable
+Real time clock set                                     ← MSP writes working
+Loading progress: 753439/753439 (100%)
+```
+
+The configurator moved to its connected state with the full tab set. ESC Configurator loads
+and detects the serial polyfill (it offers "Select Serial Port" rather than its
+unsupported-browser screen).
+
+### DFU re-enumeration, on hardware
+
+The board was sent to its bootloader with the CLI `bl` command. The serial side closed
+cleanly (`Sent: 33191 bytes, Received: 297587 bytes`) and the transfer log recorded the
+handoff:
+
+```
+23:37:50.133  Betaflight STM32F411 · Serial port closed
+23:37:50.716  STM32 BOOTLOADER (0483:DF11) · https://app.betaflight.com
+              DFU re-enumeration detected (SAME_VENDOR_BOOTLOADER);
+              grant carried over from 0483:5740
+23:37:50.733  Requesting Android USB permission
+23:40:28.876  Android USB permission granted
+```
+
+The bootloader then enumerated with its DFU alternates parsed:
+
+```
+STM32 BOOTLOADER   0483:DF11   permission granted   serial 2092336F5547
+  exposed as  WebUSB DFU, known bootloader
+  interface 0 alt 0  class FE/01/02  @Internal Flash /0x08000000/04*016Kg,01*064Kg,03*128Kg
+  interface 0 alt 1  class FE/01/02  @Option Bytes /...
+```
+
+Betaflight's device picker switched to **"Betaflight STM32 BOOTLOADER"**, i.e. the board
+reached the page through `navigator.usb.getDevices()`.
+
+The match was **SAME_VENDOR_BOOTLOADER**, not SAME_SERIAL: this board reports `0x8000000`
+in application mode and `2092336F5547` in DFU. Serial-only matching would have failed on
+real hardware — the vendor fallback is what carried it.
+
+**Not proven on hardware:** the WebUSB *transfer* path. `WebUsbDfuTransport.open()` →
+`claimInterface` → `controlTransferIn` only runs once a flash begins, so no `CONTROL_IN`
+entry appears in the log above. Those paths are covered by unit tests (including the
+stall-not-reject contract) but have not moved bytes over real USB.
+
+Two bugs only real hardware exposed, both fixed:
+
+- **The device picker rendered empty.** `AlertDialog.Builder` was given both `setMessage()`
+  and `setItems()`; `AlertController` only renders the item list when no message is set, so
+  every device was silently hidden. The requesting origin now goes in the title.
+- **A USB mass-storage device was classified as a serial port.** The "vendor-specific device
+  with a bulk pair" fallback in `DeviceCapabilities` matched a card reader on a hub. Known
+  non-serial interface classes are now excluded, and the diagnostic screen confirms the
+  reader reads `exposed as not exposed` while the FC still reads `exposed as Web Serial`.
+
+## Known limits
+
+- `device.reset()` is best-effort: Android exposes no libusb-style port reset, so it
+  releases interfaces and reopens the connection.
+- `usbVersionMajor/Minor/Subminor` report 2.0.0; Android does not expose `bcdUSB`. Neither
+  configurator reads it beyond logging.
+- CDC modem status (DCD/DSR/RI) comes from the interrupt endpoint's `SERIAL_STATE`
+  notification and is cached; CTS is not reported by that path.
+- The bridge moves binary as base64 over JSON. A firmware flash is on the order of a
+  thousand round trips, which is comfortably fast; a binary `WebMessagePayload` would be a
+  later optimisation, not a correctness fix.
+- Requires an Android System WebView new enough for `DOCUMENT_START_SCRIPT` and
+  `WEB_MESSAGE_LISTENER` (WebView 106+). The app detects this and says so rather than
+  failing obscurely.
+- The CDC-ACM driver is proven against real hardware; **CP210x, CH34x and FTDI are not**.
+  Their register sequences follow the Linux drivers but have never been run against a
+  physical adapter — the FTDI baud divisor and per-packet status-byte stripping are the
+  most likely places for a first bug.
+- A USB device already claimed by another app that holds a persistent "open by default"
+  grant will be handed to that app on attach. Choose **Configurator Browser** in the
+  system chooser if more than one app claims the board.

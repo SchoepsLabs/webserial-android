@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.coordinatorlayout.widget.CoordinatorLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/page_background">
+
+    <WebView
+        android:id="@+id/webView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        app:layout_behavior="@string/appbar_scrolling_view_behavior" />
+
+    <com.google.android.material.appbar.AppBarLayout
+        android:id="@+id/appBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@color/chrome_background"
+        app:elevation="0dp"
+        app:liftOnScroll="false">
+
+        <!--
+            enterAlways|snap: the bar slides away as you scroll into a long
+            configurator tab and comes straight back on the first upward scroll,
+            so the page gets the full screen without the address bar being hard
+            to reach.
+        -->
+        <LinearLayout
+            android:id="@+id/chromeBar"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingStart="4dp"
+            android:paddingEnd="0dp"
+            app:layout_scrollFlags="scroll|enterAlways|snap">
+
+            <ImageButton
+                android:id="@+id/usbIndicator"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/usb_status"
+                android:src="@drawable/ic_usb"
+                app:tint="@color/usb_on" />
+
+            <EditText
+                android:id="@+id/addressBar"
+                android:layout_width="0dp"
+                android:layout_height="36dp"
+                android:layout_weight="1"
+                android:background="@drawable/address_field"
+                android:hint="@string/address_hint"
+                android:imeOptions="actionGo|flagNoExtractUi"
+                android:inputType="textUri"
+                android:maxLines="1"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:selectAllOnFocus="true"
+                android:singleLine="true"
+                android:textColor="@color/chrome_text"
+                android:textColorHint="@color/chrome_hint"
+                android:textSize="14sp"
+                android:autofillHints="" />
+
+            <ImageButton
+                android:id="@+id/menuButton"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/menu"
+                android:src="@drawable/ic_more"
+                app:tint="@color/chrome_text" />
+
+        </LinearLayout>
+
+        <ProgressBar
+            android:id="@+id/progress"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="match_parent"
+            android:layout_height="2dp"
+            android:indeterminate="false"
+            android:max="100"
+            android:progressTint="@color/accent"
+            android:visibility="gone" />
+
+    </com.google.android.material.appbar.AppBarLayout>
+
+    <!-- Reveals the address bar again when the page is in full screen. -->
+    <com.google.android.material.floatingactionbutton.FloatingActionButton
+        android:id="@+id/exitFullScreen"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|end"
+        android:layout_margin="12dp"
+        android:alpha="0.55"
+        android:contentDescription="@string/exit_full_screen"
+        android:src="@drawable/ic_more"
+        android:visibility="gone"
+        app:backgroundTint="@color/chrome_background"
+        app:fabSize="mini"
+        app:tint="@color/chrome_text" />
+
+</androidx.coordinatorlayout.widget.CoordinatorLayout>

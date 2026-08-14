@@ -1,0 +1,53 @@
+<resources>
+    <string name="app_name">Configurator Browser</string>
+    <string name="diagnostics_title">USB diagnostics</string>
+    <string name="sites_title">Sites &amp; USB access</string>
+
+    <string name="address_hint">Search or type a web address</string>
+    <string name="menu">Menu</string>
+    <string name="usb_status">USB access</string>
+    <string name="exit_full_screen">Show address bar</string>
+
+    <string name="menu_sites">Sites&#8230;</string>
+    <string name="menu_reload">Reload</string>
+    <string name="menu_desktop">Desktop site</string>
+    <string name="menu_full_screen">Full screen</string>
+    <string name="menu_diagnostics">USB diagnostics</string>
+    <string name="menu_share">Open in system browser</string>
+
+    <string name="refresh">Refresh</string>
+    <string name="clear_log">Clear log</string>
+    <string name="revoke_grants">Revoke all</string>
+
+    <string name="section_devices">Attached USB devices</string>
+    <string name="section_grants">Per-origin authorisations</string>
+    <string name="no_devices">No USB devices attached.</string>
+    <string name="unnamed_device">Unnamed USB device</string>
+    <string name="log_count">Transfer log (%1$d entries, newest first)</string>
+
+    <string name="picker_title">%1$s\nRequested by %2$s</string>
+    <string name="dfu_detected">DFU mode detected: %1$s (%2$s)</string>
+    <string name="no_browser">No browser is available to open that link.</string>
+    <string name="bad_address">That does not look like a web address.</string>
+
+    <string name="usb_enabled_for">USB enabled for %1$s</string>
+    <string name="usb_disabled_for">USB disabled for %1$s</string>
+    <string name="usb_on_summary">This site can use USB</string>
+    <string name="usb_off_summary">This site cannot use USB</string>
+
+    <string name="enable_usb_title">Give %1$s access to USB devices?</string>
+    <string name="enable_usb_message">This site will be able to ask for your flight controller, ESCs and other USB hardware, and to read and write them once you pick a device.\n\nOnly enable this for configurator software you trust. You can turn it off again under Sites.</string>
+    <string name="enable_usb_confirm">Enable USB</string>
+
+    <string name="add_site">Add this site</string>
+    <string name="remove_site">Remove</string>
+    <string name="built_in_site">Built in</string>
+    <string name="sites_hint">Built-in configurators can use USB out of the box. Any other site you add starts with USB switched off.</string>
+
+    <string name="download_started">Downloading %1$s</string>
+    <string name="download_failed">Could not download %1$s</string>
+    <string name="saved_file">Saved %1$s</string>
+
+    <string name="unsupported_webview_title">This WebView cannot host the USB bridge</string>
+    <string name="unsupported_webview_message">Android System WebView is missing: %1$s.\n\nUpdate Android System WebView (or Chrome) from the Play Store, then reopen this app. Pages will still load, but USB devices will not be available.</string>
+</resources>
