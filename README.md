@@ -1,6 +1,6 @@
-# Configurator Browser
+# WebSerial Browser
 
-**An Android USB transport bridge for web apps.**
+**Web Serial and WebUSB for Android — one USB bridge for every hardware web app.**
 
 The Android **WebView** has neither **Web Serial** nor **WebUSB**. This is a
 browser that implements both on top of the Android USB Host API and hands them
@@ -36,7 +36,7 @@ tools that were never going to ship an Android app work too.
 > belong to their owners.
 
 <p>
-  <img src="docs/screenshot-browser.png" width="260" alt="Betaflight Configurator running in the app">
+  <img src="docs/screenshot-browser.png" width="260" alt="A configurator running in the app">
   <img src="docs/screenshot-picker.png" width="260" alt="Native device picker">
   <img src="docs/screenshot-diagnostics.png" width="260" alt="USB diagnostics screen">
 </p>
