@@ -20,8 +20,8 @@ android {
         applicationId = "com.trustedconfigurator.browser"
         minSdk = 24
         targetSdk = 34
-        versionCode = 4
-        versionName = "1.3"
+        versionCode = 5
+        versionName = "1.4"
     }
 
     signingConfigs {
@@ -32,6 +32,12 @@ android {
                 keyAlias = keystoreProperties.getProperty("keyAlias")
                 keyPassword = keystoreProperties.getProperty("keyPassword")
             }
+            // v3 carries a rotation proof, so the signing key can be replaced
+            // later without orphaning existing installs. v1 is unnecessary at
+            // minSdk 24 and only bloats the APK.
+            enableV1Signing = false
+            enableV2Signing = true
+            enableV3Signing = true
         }
     }
 

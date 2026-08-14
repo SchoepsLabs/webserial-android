@@ -1,5 +1,9 @@
 # WebSerial Browser
 
+[![build](https://github.com/SchoepsLabs/webserial-android/actions/workflows/ci.yml/badge.svg)](https://github.com/SchoepsLabs/webserial-android/actions/workflows/ci.yml)
+[![release](https://img.shields.io/github/v/release/SchoepsLabs/webserial-android)](https://github.com/SchoepsLabs/webserial-android/releases/latest)
+[![licence](https://img.shields.io/badge/licence-MIT-blue)](LICENSE)
+
 **Web Serial and WebUSB for Android — one USB bridge for every hardware web app.**
 
 The Android **WebView** has neither **Web Serial** nor **WebUSB**. This is a
@@ -54,6 +58,28 @@ will ask you to allow installing from unknown sources.
 Requires **Android 7.0+**, a phone with **USB host** support, and an OTG cable or
 hub. Android System WebView must be recent enough for `DOCUMENT_START_SCRIPT`
 (WebView 106+, i.e. anything updated since 2022) — the app says so if it is not.
+
+### What you will see when installing
+
+Android warns about any app that did not come from a store. This is normal for a
+sideloaded APK and is not specific to this one:
+
+1. **"For your security, your phone is not allowed to install unknown apps from
+   this source"** — allow it for whichever app you are installing from, usually
+   your browser or the file manager.
+2. **Play Protect may say the developer is not recognised** — tap *More details*,
+   then *Install anyway*. Play Protect builds recognition from install volume, so
+   a new app always looks unfamiliar to it.
+
+The app is signed with a key registered under
+[Android developer verification](https://developer.android.com/developer-verification),
+so it stays installable when that becomes mandatory. Every release is signed with
+the same key — if a future download ever reports a *different* signature, do not
+install it.
+
+Once installed: plug in a board, open a configurator, hit **Connect**, and pick
+the device when the app asks. The app tells you when a new release exists; it
+never downloads or installs anything itself.
 
 ## Privacy
 
@@ -119,6 +145,7 @@ Verified against real hardware (Pixel 8 Pro, Android 16, Betaflight STM32F411):
 | WebUSB transfers (`controlTransferIn` etc.) | only run during an actual flash |
 | CP210x / CH34x / FTDI drivers | checked line by line against [usb-serial-for-android](https://github.com/mik3y/usb-serial-for-android), but still never run on hardware — this is what an ESP32 board would use |
 | Android 7–9 | minSdk claims support; only ever run on 16 |
+| Saving on a real device | the file layer is unit-tested, but no file has been written from a phone yet |
 
 CDC-ACM — every STM32/AT32/GD32/APM32/X32/RP2040 flight controller — is the one
 serial driver proven in the field.
