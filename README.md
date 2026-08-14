@@ -52,12 +52,15 @@ hub. Android System WebView must be recent enough for `DOCUMENT_START_SCRIPT`
 
 ## Privacy
 
-The app collects nothing, sends nothing, and has no analytics, accounts or
-network calls of its own. It declares only `INTERNET` and `ACCESS_NETWORK_STATE`
-— **no storage permission of any kind**, because file access goes through
-Android's own save/open dialogs, and USB access through Android's own per-device
-permission prompt. Pages you visit reach the network on their own behalf, as in
-any browser.
+The app collects nothing and has no analytics or accounts. It declares only
+`INTERNET` and `ACCESS_NETWORK_STATE` — **no storage permission of any kind**,
+because file access goes through Android's own save/open dialogs, and USB access
+through Android's own per-device permission prompt.
+
+It makes exactly one network request of its own: once a day it asks
+`api.github.com` whether a newer release exists, sending nothing but the request
+itself. Turn it off under **Check for updates** and it never calls out again.
+Pages you visit reach the network on their own behalf, as in any browser.
 
 ## Bundled sites
 
@@ -75,11 +78,12 @@ reaches USB only after you explicitly enable it for that origin, behind a
 warning, and each origin only ever sees the devices you picked there. See
 [Sites and USB access](#sites-and-usb-access).
 
-Betaflight also publishes [its own Capacitor Android APK](https://downloads.betaflight.com/),
-which is the better choice if Betaflight is all you need — it is official and it
-bundles its own build. This browser exists for everything else: the other
-configurators have no native Android app, and it loads live sites rather than a
-frozen bundle.
+Betaflight also publishes [its own Capacitor Android APK](https://downloads.betaflight.com/).
+It is official and supported, and it works offline — but its Capacitor config is
+`"webDir": "src/dist"`, so it **bundles a frozen build**: a new Betaflight release
+means downloading a new APK. This browser loads the live site, so the configurator
+is whatever is current the moment you open it, and the only thing you ever update
+is the bridge underneath.
 
 ## Should work, untested
 

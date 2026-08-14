@@ -47,8 +47,11 @@ import com.trustedconfigurator.browser.files.FileBridge
 import com.trustedconfigurator.browser.files.FilePicker
 import com.trustedconfigurator.browser.usb.TransferKind
 import com.trustedconfigurator.browser.usb.TransferLog
+import com.trustedconfigurator.browser.update.AvailableUpdate
+import com.trustedconfigurator.browser.update.UpdateChecker
 import com.trustedconfigurator.browser.usb.UsbHub
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlin.coroutines.resume
@@ -124,6 +127,8 @@ class MainActivity : AppCompatActivity(), DevicePicker, FilePicker {
             val requested = intent?.dataString?.let { OriginPolicy.toUrl(it) }
             binding.webView.loadUrl(requested ?: settings.lastUrl)
         }
+
+        checkForUpdates(userInitiated = false)
 
         onBackPressedDispatcher.addCallback(this) {
             when {
@@ -221,6 +226,7 @@ class MainActivity : AppCompatActivity(), DevicePicker, FilePicker {
         }
         menu.add(GROUP_ACTIONS, ID_SITES, 103, R.string.menu_sites)
         menu.add(GROUP_ACTIONS, ID_DIAGNOSTICS, 104, R.string.menu_diagnostics)
+        menu.add(GROUP_ACTIONS, ID_UPDATES, 105, R.string.menu_check_updates)
 
         popup.setOnMenuItemClickListener { item -> onMenuItem(item) }
         popup.show()
@@ -249,6 +255,9 @@ class MainActivity : AppCompatActivity(), DevicePicker, FilePicker {
             }
             ID_DIAGNOSTICS -> {
                 startActivity(Intent(this, DiagnosticsActivity::class.java)); true
+            }
+            ID_UPDATES -> {
+                checkForUpdates(userInitiated = true); true
             }
             else -> false
         }
@@ -540,6 +549,57 @@ class MainActivity : AppCompatActivity(), DevicePicker, FilePicker {
             }
         }
 
+    // ------------------------------------------------------------ updates
+
+    /**
+     * Asks GitHub whether a newer release exists.
+     *
+     * The sites this browser loads are always current because they are fetched
+     * live; the app around them is not, so it has to say when it has fallen
+     * behind. It only ever reports — installing is the system's job, through the
+     * release page in a real browser. Automatic checks run at most daily and can
+     * be turned off entirely.
+     */
+    private fun checkForUpdates(userInitiated: Boolean) {
+        if (!userInitiated) {
+            if (!settings.updateCheckEnabled) return
+            val elapsed = System.currentTimeMillis() - settings.lastUpdateCheckMillis
+            if (elapsed in 0 until UPDATE_CHECK_INTERVAL_MS) return
+        }
+
+        lifecycleScope.launch {
+            val update = withContext(Dispatchers.IO) { UpdateChecker.fetchLatest(BuildConfig.VERSION_NAME) }
+            settings.lastUpdateCheckMillis = System.currentTimeMillis()
+
+            when {
+                update == null && userInitiated ->
+                    toast(getString(R.string.update_none, BuildConfig.VERSION_NAME))
+                update == null -> Unit
+                // Do not nag: a version already declined stays declined unless asked for.
+                !userInitiated && update.versionName == settings.dismissedUpdate -> Unit
+                else -> showUpdateDialog(update)
+            }
+        }
+    }
+
+    private fun showUpdateDialog(update: AvailableUpdate) {
+        AlertDialog.Builder(this)
+            .setTitle(getString(R.string.update_title, update.versionName))
+            .setMessage(getString(R.string.update_body, BuildConfig.VERSION_NAME))
+            .setNegativeButton(R.string.update_later) { _, _ ->
+                settings.dismissedUpdate = update.versionName
+            }
+            .setOnCancelListener { settings.dismissedUpdate = update.versionName }
+            .setPositiveButton(R.string.update_download) { _, _ ->
+                try {
+                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(update.pageUrl)))
+                } catch (e: ActivityNotFoundException) {
+                    toast(getString(R.string.no_browser))
+                }
+            }
+            .show()
+    }
+
     // ------------------------------------------------------------- misc
 
     private fun warnIfBridgeUnavailable() {
@@ -590,6 +650,8 @@ class MainActivity : AppCompatActivity(), DevicePicker, FilePicker {
         const val ID_FULLSCREEN = 1002
         const val ID_SITES = 1003
         const val ID_DIAGNOSTICS = 1004
+        const val ID_UPDATES = 1005
+        const val UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000L
 
         /** Chrome on desktop Linux; keeps the configurators in their wide layout. */
         const val DESKTOP_USER_AGENT =

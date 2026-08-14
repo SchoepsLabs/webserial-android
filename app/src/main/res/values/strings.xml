@@ -48,6 +48,17 @@
     <string name="download_failed">Could not download %1$s</string>
     <string name="saved_file">Saved %1$s</string>
 
+    <string name="menu_check_updates">Check for updates</string>
+    <string name="update_title">Version %1$s is available</string>
+    <string name="update_body">You are running %1$s.
+
+The websites this app loads are always current; the app itself is not. Update to get driver fixes and new sites.</string>
+    <string name="update_download">Open release page</string>
+    <string name="update_later">Later</string>
+    <string name="update_none">You are on the latest version (%1$s)</string>
+    <string name="update_failed">Could not reach GitHub to check for updates</string>
+    <string name="update_check_toggle">Check for updates automatically</string>
+
     <string name="unsupported_webview_title">This WebView cannot host the USB bridge</string>
     <string name="unsupported_webview_message">Android System WebView is missing: %1$s.\n\nUpdate Android System WebView (or Chrome) from the Play Store, then reopen this app. Pages will still load, but USB devices will not be available.</string>
 </resources>

@@ -100,6 +100,20 @@ class BrowserSettings(context: Context) {
         get() = prefs.getBoolean(KEY_FULLSCREEN, false)
         set(value) = prefs.edit().putBoolean(KEY_FULLSCREEN, value).apply()
 
+    /** Off means no network call to GitHub is ever made. */
+    var updateCheckEnabled: Boolean
+        get() = prefs.getBoolean(KEY_UPDATE_CHECK, true)
+        set(value) = prefs.edit().putBoolean(KEY_UPDATE_CHECK, value).apply()
+
+    var lastUpdateCheckMillis: Long
+        get() = prefs.getLong(KEY_LAST_UPDATE_CHECK, 0L)
+        set(value) = prefs.edit().putLong(KEY_LAST_UPDATE_CHECK, value).apply()
+
+    /** Version the user has already been told about, so it is not offered twice. */
+    var dismissedUpdate: String
+        get() = prefs.getString(KEY_DISMISSED_UPDATE, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_DISMISSED_UPDATE, value).apply()
+
     var lastUrl: String
         get() = prefs.getString(KEY_LAST_URL, null) ?: SitePolicy.BUILT_IN.first().origin
         set(value) = prefs.edit().putString(KEY_LAST_URL, value).apply()
@@ -109,5 +123,8 @@ class BrowserSettings(context: Context) {
         const val KEY_DESKTOP = "desktop_mode"
         const val KEY_FULLSCREEN = "full_screen"
         const val KEY_LAST_URL = "last_url"
+        const val KEY_UPDATE_CHECK = "update_check"
+        const val KEY_LAST_UPDATE_CHECK = "last_update_check"
+        const val KEY_DISMISSED_UPDATE = "dismissed_update"
     }
 }
