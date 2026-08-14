@@ -108,11 +108,20 @@ Verified against real hardware (Pixel 8 Pro, Android 16, Betaflight STM32F411):
 | --- | --- |
 | Saving files (presets, blackbox dumps) | unit-tested only, never written a real file |
 | WebUSB transfers (`controlTransferIn` etc.) | only run during an actual flash |
-| CP210x / CH34x / FTDI drivers | written from the Linux drivers, never met hardware — this is what an ESP32 board would use |
+| CP210x / CH34x / FTDI drivers | checked line by line against [usb-serial-for-android](https://github.com/mik3y/usb-serial-for-android), but still never run on hardware — this is what an ESP32 board would use |
 | Android 7–9 | minSdk claims support; only ever run on 16 |
 
 CDC-ACM — every STM32/AT32/GD32/APM32/X32/RP2040 flight controller — is the one
 serial driver proven in the field.
+
+### Credits
+
+The CH34x and FTDI baud-rate encodings and the CH34x initialisation sequence
+follow [usb-serial-for-android](https://github.com/mik3y/usb-serial-for-android)
+by Mike Wakerly and Google (MIT), which matches the Linux `ch341` and `ftdi_sio`
+drivers. Reading it caught real bugs: the first hand-written CH34x encoder wrote
+the wrong register format entirely, and the FTDI one had two sub-divisor cases
+swapped and put the carry bit in the wrong field.
 
 ## Build
 

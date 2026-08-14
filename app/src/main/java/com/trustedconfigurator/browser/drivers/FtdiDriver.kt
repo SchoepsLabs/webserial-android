@@ -37,8 +37,11 @@ class FtdiDriver(
     }
 
     override fun setParameters(baudRate: Int, dataBits: Int, stopBits: Int, parity: String) {
-        val (value, index) = encodeBaudRate(baudRate)
-        if (controlOut(REQUEST_TYPE_OUT, SIO_SET_BAUD_RATE, value, index or (interfaceNumber + 1)) < 0) {
+        val (value, index) = FtdiBaud.encode(baudRate)
+        // wIndex carries only the sub-divisor high bit on a single-port part.
+        // OR-ing the interface number in here would set that bit spuriously and
+        // silently shift the baud rate.
+        if (controlOut(REQUEST_TYPE_OUT, SIO_SET_BAUD_RATE, value, index) < 0) {
             throw SerialDriverException("FTDI SET_BAUD_RATE failed (baud $baudRate)")
         }
 
@@ -52,38 +55,6 @@ class FtdiDriver(
         if (controlOut(REQUEST_TYPE_OUT, SIO_SET_DATA, config, interfaceNumber + 1) < 0) {
             throw SerialDriverException("FTDI SET_DATA failed")
         }
-    }
-
-    /**
-     * The FT232R derives its baud rate from a 3 MHz clock divided by a divisor
-     * carrying three fractional bits, so the divisor is computed in eighths and
-     * the fraction is then folded into the top bits of the request value.
-     */
-    private fun encodeBaudRate(baudRate: Int): Pair<Int, Int> {
-        if (baudRate <= 0 || baudRate > 3_000_000) {
-            throw SerialDriverException("FTDI cannot produce baud rate $baudRate")
-        }
-        if (baudRate >= 2_500_000) return 0 to 0 // divisor 0 == 3 MBaud
-        if (baudRate >= 1_750_000) return 1 to 0 // divisor 1 == 2 MBaud
-
-        var eighths = (24_000_000 shl 1) / baudRate
-        eighths = (eighths + 1) shr 1 // round to nearest eighth
-        val subDivisor = eighths and 0x07
-        val divisor = eighths shr 3
-
-        var value = divisor and 0x3FFF
-        var index = 0
-        when (subDivisor) {
-            0 -> Unit
-            1 -> value = value or 0xC000
-            2 -> value = value or 0x8000
-            3 -> index = index or 0x0100
-            4 -> value = value or 0x4000
-            5 -> { value = value or 0xC000; index = index or 0x0100 }
-            6 -> { value = value or 0x8000; index = index or 0x0100 }
-            7 -> { value = value or 0x4000; index = index or 0x0100 }
-        }
-        return value to index
     }
 
     override fun setControlSignals(
