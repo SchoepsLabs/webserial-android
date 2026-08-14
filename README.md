@@ -24,6 +24,11 @@ It ships knowing four FPV configurators, but nothing in the bridge is
 FPV-specific: it is a generic Web Serial / WebUSB implementation, and you can
 point it at any site.
 
+**4.8 MB, for all of them.** Betaflight's own Android build is 15 MB and covers
+one tool; their Tauri build is 89 MB. This is small for the same reason it is
+always current — it bundles no web assets at all. The entire bridge is two
+JavaScript files; everything else in the APK is icons and Kotlin.
+
 **One app instead of one per tool.** Every configurator that wants to talk to
 hardware from a phone otherwise needs its own native Android build, with its own
 USB permission handling and its own release channel. Most never get one. This is
