@@ -46,9 +46,6 @@ tools that were never going to ship an Android app work too.
 Grab the APK from [Releases](../../releases) and open it on your phone. Android
 will ask you to allow installing from unknown sources.
 
-For automatic updates, add the releases page to
-[Obtainium](https://github.com/ImranR98/Obtainium).
-
 Requires **Android 7.0+**, a phone with **USB host** support, and an OTG cable or
 hub. Android System WebView must be recent enough for `DOCUMENT_START_SCRIPT`
 (WebView 106+, i.e. anything updated since 2022) — the app says so if it is not.
