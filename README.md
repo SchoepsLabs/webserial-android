@@ -1,10 +1,27 @@
 # Configurator Browser
 
-An Android browser that gives web-based FPV configurators the **Web Serial** and
-**WebUSB** APIs that Chrome on Android does not ship — backed by the Android USB
-Host API — so you can configure and flash a flight controller from your phone.
+**An Android USB transport bridge for web apps.**
 
-Nothing is bundled. Every page is loaded live from the network.
+Chrome on Android has never shipped **Web Serial** or **WebUSB**, so a whole
+category of "just plug it in and use the web app" tooling is desktop-only — on a
+platform that has had USB host support since 2011. This is a browser that
+implements both APIs on top of the Android USB Host API and hands them to pages
+you trust.
+
+It ships knowing four FPV configurators, but nothing in the bridge is
+FPV-specific: it is a generic Web Serial / WebUSB implementation, and you can
+point it at any site.
+
+**One app instead of one per tool.** Every configurator that wants to talk to
+hardware from a phone otherwise needs its own native Android build, with its own
+USB permission handling and its own release channel. Most never get one. This is
+the bridge written once, so the web app you already use just works — and the
+tools that were never going to ship an Android app work too.
+
+> **Unofficial.** Not affiliated with, endorsed by, or produced by Betaflight,
+> ESC Configurator, AM32, ExpressLRS or any other project. Those are independent
+> websites this browser can load, exactly as any browser can. All trademarks
+> belong to their owners.
 
 <p>
   <img src="docs/screenshot-browser.png" width="260" alt="Betaflight Configurator running in the app">
@@ -22,9 +39,20 @@ For automatic updates, add the releases page to
 
 Requires **Android 7.0+**, a phone with **USB host** support, and an OTG cable or
 hub. Android System WebView must be recent enough for `DOCUMENT_START_SCRIPT`
-(WebView 106+, i.e. anything updated since 2022) — the app tells you if it is not.
+(WebView 106+, i.e. anything updated since 2022) — the app says so if it is not.
 
-## What it knows about
+## Privacy
+
+The app collects nothing, sends nothing, and has no analytics, accounts or
+network calls of its own. It declares only `INTERNET` and `ACCESS_NETWORK_STATE`
+— **no storage permission of any kind**, because file access goes through
+Android's own save/open dialogs, and USB access through Android's own per-device
+permission prompt. Pages you visit reach the network on their own behalf, as in
+any browser.
+
+## Bundled sites
+
+These four ship with USB enabled:
 
 | Site | |
 | --- | --- |
@@ -33,13 +61,28 @@ hub. Android System WebView must be recent enough for `DOCUMENT_START_SCRIPT`
 | <https://am32.ca> | AM32 Configurator |
 | <https://expresslrs.github.io> | ExpressLRS Web Flasher |
 
-These four ship with USB enabled. You can type **any** other address into the bar
-— it is a real browser — but a site only reaches USB after you explicitly turn it
-on for that origin, behind a warning. See [Sites and USB access](#sites-and-usb-access).
+They are presets, not the product. Type **any** address into the bar — a site
+reaches USB only after you explicitly enable it for that origin, behind a
+warning, and each origin only ever sees the devices you picked there. See
+[Sites and USB access](#sites-and-usb-access).
 
-INAV and Rotorflight have no web configurator, so there is nothing to point at.
-`blackbox.betaflight.com` is deliberately absent: the configurator now carries a
-Blackbox Viewer tab of its own, and a log viewer never needs a serial port.
+Betaflight also publishes [its own Capacitor Android APK](https://downloads.betaflight.com/),
+which is the better choice if Betaflight is all you need — it is official and it
+bundles its own build. This browser exists for everything else: the other
+configurators have no native Android app, and it loads live sites rather than a
+frozen bundle.
+
+## Should work, untested
+
+The bridge is a generic Web Serial / WebUSB implementation, so anything that
+works in desktop Chrome over those APIs is a candidate — ESP Web Tools
+installers (WLED, ESPHome, Tasmota), `esptool-js`, Meshtastic's web flasher,
+WebDFU, WebADB.
+
+Treat that as *plausible*, not proven. The catch is the serial driver: only
+CDC-ACM has met real hardware. Most ESP32/ESP8266 boards use CP210x or CH340,
+and those drivers are written from the Linux sources and have never been run.
+See Status.
 
 ## Status
 
