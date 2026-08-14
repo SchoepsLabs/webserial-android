@@ -73,9 +73,30 @@ sideloaded APK and is not specific to this one:
 
 The app is signed with a key registered under
 [Android developer verification](https://developer.android.com/developer-verification),
-so it stays installable when that becomes mandatory. Every release is signed with
-the same key — if a future download ever reports a *different* signature, do not
-install it.
+so it stays installable when that becomes mandatory.
+
+### Verify a download
+
+An app that asks for USB access to your hardware is worth checking first. Every
+release publishes its APK's SHA-256 in the release notes and as a
+`.sha256` file next to the APK, so you can confirm the download is byte-for-byte
+what was published:
+
+```
+shasum -a 256 -c WebSerialBrowser-1.5.apk.sha256
+```
+
+The stronger check is the signing key, because it does not change between
+versions. Every release is signed with this certificate:
+
+```
+SHA-256  98:BA:F6:B1:AF:BB:09:69:CA:EB:48:8E:D5:E5:B1:32:7E:7F:7B:8E:52:4C:85:33:04:77:F2:23:D0:46:D1:47
+```
+
+`apksigner verify --print-certs -v <apk>` prints it. An APK claiming to be this
+app but signed with anything else did not come from here — do not install it.
+Android enforces the same rule: an update signed with a different key cannot
+install over an existing one.
 
 Once installed: plug in a board, open a configurator, hit **Connect**, and pick
 the device when the app asks. The app tells you when a new release exists; it
