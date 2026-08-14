@@ -2,11 +2,23 @@
 
 **An Android USB transport bridge for web apps.**
 
-Chrome on Android has never shipped **Web Serial** or **WebUSB**, so a whole
-category of "just plug it in and use the web app" tooling is desktop-only — on a
-platform that has had USB host support since 2011. This is a browser that
-implements both APIs on top of the Android USB Host API and hands them to pages
-you trust.
+The Android **WebView** has neither **Web Serial** nor **WebUSB**. This is a
+browser that implements both on top of the Android USB Host API and hands them
+to pages you trust.
+
+Where Chrome for Android sits today, accurately:
+
+| | Chrome for Android | this app |
+| --- | --- | --- |
+| WebUSB | yes, since Chrome 61 | yes |
+| Web Serial | [only since Chrome 148](https://chromestatus.com/feature/6043992171085824) (April 2026), partial, and USB serial is limited to a subset of devices | yes, on anything with USB host |
+
+So the gap this fills is narrowing, and worth being honest about: if your phone
+and browser are new enough, some of this already works in plain Chrome. What you
+still get here is Web Serial that does not depend on your device being on the
+supported list, four USB-serial chip drivers instead of whatever the platform
+exposes, per-origin USB permissions, and a diagnostics screen that tells you why
+a board did not connect.
 
 It ships knowing four FPV configurators, but nothing in the bridge is
 FPV-specific: it is a generic Web Serial / WebUSB implementation, and you can
