@@ -22,8 +22,9 @@ class FileBridgeException(message: String) : Exception(message)
  * File saving and loading, backed by the Storage Access Framework.
  *
  * This is what makes "save the blackbox dump" and "export a preset" work. A
- * WebView has no File System Access API and silently drops `blob:` downloads, so
- * without this layer every save button in both configurators does nothing at all.
+ * WebView exposes a File System Access API whose save half is inert —
+ * showSaveFilePicker resolves never and throws nothing — and it drops `blob:`
+ * downloads, so without this layer every save button silently does nothing.
  *
  * Writes are streamed: the blackbox log a page hands over can be tens of
  * megabytes, and buffering it in one message would be the app's peak allocation.
@@ -35,6 +36,7 @@ class FileBridge(context: Context, private val picker: FilePicker) {
 
     private val saveTargets = ConcurrentHashMap<String, Uri>()
     private val writers = ConcurrentHashMap<String, OutputStream>()
+    private val bytesWritten = ConcurrentHashMap<String, Long>()
     private val readers = ConcurrentHashMap<String, ReadSession>()
 
     /** An open read, with its stream and position kept between chunk requests. */
@@ -50,7 +52,16 @@ class FileBridge(context: Context, private val picker: FilePicker) {
 
     /** Opens a save dialog. @return token and final name, or null if cancelled. */
     suspend fun beginSave(suggestedName: String, mimeType: String): SaveTarget? {
-        val uri = picker.createDocument(suggestedName, mimeType) ?: return null
+        // Logged before the dialog opens, not just on success: Betaflight's save
+        // handlers have no catch, so a failure anywhere in here is invisible in
+        // the page. The transfer log is then the only way to tell "the user
+        // cancelled" from "the result never came back".
+        TransferLog.record(TransferKind.EVENT, "-", suggestedName, "Save dialog requested ($mimeType)")
+        val uri = picker.createDocument(suggestedName, mimeType)
+        if (uri == null) {
+            TransferLog.record(TransferKind.EVENT, "-", suggestedName, "Save dialog returned nothing (cancelled)")
+            return null
+        }
         val token = "w${counter.incrementAndGet()}"
         saveTargets[token] = uri
         val name = displayNameOf(uri) ?: suggestedName
@@ -72,13 +83,23 @@ class FileBridge(context: Context, private val picker: FilePicker) {
                 .buffered()
         }
         stream.write(bytes)
+        bytesWritten[token] = (bytesWritten[token] ?: 0L) + bytes.size
     }
 
     fun endSave(token: String) {
+        var written = 0L
         writers.remove(token)?.let { stream ->
             runCatching { stream.flush() }
             runCatching { stream.close() }
+            written = bytesWritten.remove(token) ?: 0L
         }
+        TransferLog.record(
+            TransferKind.EVENT,
+            "-",
+            saveTargets[token]?.let { displayNameOf(it) } ?: token,
+            "Save complete",
+            written.toInt(),
+        )
         // The uri is retained so a later write re-opens the same document.
     }
 

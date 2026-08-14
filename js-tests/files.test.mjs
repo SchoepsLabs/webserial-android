@@ -5,9 +5,9 @@ import { createHarness } from "./harness.mjs";
 /**
  * The File System Access shims.
  *
- * A WebView has neither showSaveFilePicker nor working `blob:` downloads, so
- * without these every save button in both configurators is a no-op — presets,
- * CLI diffs, blackbox dumps, ESC's dump.hex.
+ * A WebView defines showSaveFilePicker but it never resolves, and it drops
+ * `blob:` downloads, so without these every save button in both configurators is
+ * a silent no-op — presets, CLI diffs, blackbox dumps, ESC's dump.hex.
  */
 
 function saveHarness() {
@@ -28,6 +28,29 @@ test("showSaveFilePicker and showOpenFilePicker are installed", () => {
     const { sandbox } = createHarness();
     assert.equal(typeof sandbox.showSaveFilePicker, "function");
     assert.equal(typeof sandbox.showOpenFilePicker, "function");
+});
+
+test("a host implementation that already exists is replaced, not deferred to", async () => {
+    /*
+     * The Android WebView defines showSaveFilePicker and showOpenFilePicker
+     * already. showOpenFilePicker works; showSaveFilePicker resolves never and
+     * throws nothing, so every save button silently did nothing while the
+     * polyfill politely stood aside. Detecting the API by existence is the wrong
+     * test — it has to be replaced unconditionally.
+     */
+    const deadBuiltIn = () => new Promise(() => {});
+    const harness = createHarness({
+        preexisting: { showSaveFilePicker: deadBuiltIn, showOpenFilePicker: deadBuiltIn },
+    });
+    harness.on("file.pickSave", (args) => ({ token: "w1", name: args.suggestedName }));
+
+    assert.notEqual(harness.sandbox.showSaveFilePicker, deadBuiltIn, "save picker was not replaced");
+    assert.notEqual(harness.sandbox.showOpenFilePicker, deadBuiltIn, "open picker was not replaced");
+
+    // And the replacement actually reaches native rather than hanging.
+    const handle = await harness.sandbox.showSaveFilePicker({ suggestedName: "diff.txt" });
+    assert.equal(handle.name, "diff.txt");
+    assert.equal(harness.callsFor("file.pickSave").length, 1);
 });
 
 test("a save handle reports the granted permissions Betaflight checks", async () => {

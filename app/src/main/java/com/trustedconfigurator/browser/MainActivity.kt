@@ -78,18 +78,31 @@ class MainActivity : AppCompatActivity(), DevicePicker, FilePicker {
     private var chromeExpanded = true
 
     // SAF pickers. Registered once; each launch resumes the coroutine that asked.
-    private var pendingCreate: ((Uri?) -> Unit)? = null
-    private var pendingOpen: ((Uri?) -> Unit)? = null
+    private var pendingCreate: ((Uri?) -> Unit)?
+        get() = pendingCreateRequest
+        set(value) { pendingCreateRequest = value }
+
+    private var pendingOpen: ((Uri?) -> Unit)?
+        get() = pendingOpenRequest
+        set(value) { pendingOpenRequest = value }
     private var pendingFileChooser: ValueCallback<Array<Uri>>? = null
 
+    /*
+     * Held in the companion, not the instance: if the system recreates this
+     * activity while the picker is in front, the result lands on the new
+     * instance and an instance field would already be null — the coroutine
+     * would then wait forever and the page's save would hang with no error.
+     */
     private val createDocument = registerForActivityResult(ActivityResultContracts.CreateDocument("*/*")) { uri ->
-        pendingCreate?.invoke(uri)
+        val callback = pendingCreate
         pendingCreate = null
+        callback?.invoke(uri)
     }
 
     private val openDocument = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        pendingOpen?.invoke(uri)
+        val callback = pendingOpen
         pendingOpen = null
+        callback?.invoke(uri)
     }
 
     private val chooseForInput = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -227,6 +240,10 @@ class MainActivity : AppCompatActivity(), DevicePicker, FilePicker {
         menu.add(GROUP_ACTIONS, ID_SITES, 103, R.string.menu_sites)
         menu.add(GROUP_ACTIONS, ID_DIAGNOSTICS, 104, R.string.menu_diagnostics)
         menu.add(GROUP_ACTIONS, ID_UPDATES, 105, R.string.menu_check_updates)
+        menu.add(GROUP_ACTIONS, ID_AUTO_UPDATES, 106, R.string.update_check_toggle).apply {
+            isCheckable = true
+            isChecked = settings.updateCheckEnabled
+        }
 
         popup.setOnMenuItemClickListener { item -> onMenuItem(item) }
         popup.show()
@@ -258,6 +275,15 @@ class MainActivity : AppCompatActivity(), DevicePicker, FilePicker {
             }
             ID_UPDATES -> {
                 checkForUpdates(userInitiated = true); true
+            }
+            ID_AUTO_UPDATES -> {
+                settings.updateCheckEnabled = !settings.updateCheckEnabled
+                toast(
+                    getString(
+                        if (settings.updateCheckEnabled) R.string.update_auto_on else R.string.update_auto_off,
+                    ),
+                )
+                true
             }
             else -> false
         }
@@ -441,6 +467,9 @@ class MainActivity : AppCompatActivity(), DevicePicker, FilePicker {
         }
 
         override fun onPageStarted(view: WebView, url: String, favicon: android.graphics.Bitmap?) {
+            // The previous document's reply channels die with it; using one
+            // afterwards crashes the WebView natively.
+            bridge.forgetProxies()
             setChromeExpanded(true)
             currentOrigin = OriginPolicy.normalize(url)
             binding.addressBar.setText(url)
@@ -493,7 +522,11 @@ class MainActivity : AppCompatActivity(), DevicePicker, FilePicker {
     override suspend fun createDocument(suggestedName: String, mimeType: String): Uri? =
         withContext(Dispatchers.Main) {
             suspendCancellableCoroutine { continuation ->
+                // A request still outstanding means its dialog was lost; settle it
+                // so the page that asked gets an AbortError rather than hanging.
+                pendingCreate?.invoke(null)
                 pendingCreate = { uri -> if (continuation.isActive) continuation.resume(uri) }
+                continuation.invokeOnCancellation { pendingCreate = null }
                 try {
                     createDocument.launch(suggestedName)
                 } catch (e: Exception) {
@@ -506,7 +539,9 @@ class MainActivity : AppCompatActivity(), DevicePicker, FilePicker {
     override suspend fun openDocument(mimeTypes: Array<String>): Uri? =
         withContext(Dispatchers.Main) {
             suspendCancellableCoroutine { continuation ->
+                pendingOpen?.invoke(null)
                 pendingOpen = { uri -> if (continuation.isActive) continuation.resume(uri) }
+                continuation.invokeOnCancellation { pendingOpen = null }
                 try {
                     openDocument.launch(mimeTypes)
                 } catch (e: Exception) {
@@ -651,12 +686,17 @@ class MainActivity : AppCompatActivity(), DevicePicker, FilePicker {
         const val ID_SITES = 1003
         const val ID_DIAGNOSTICS = 1004
         const val ID_UPDATES = 1005
+        const val ID_AUTO_UPDATES = 1006
         const val UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000L
 
         /** Chrome on desktop Linux; keeps the configurators in their wide layout. */
         const val DESKTOP_USER_AGENT =
             "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36"
         const val DESKTOP_SCALE_PERCENT = 50
+
+        /** Survives activity recreation; see the pendingCreate/pendingOpen note. */
+        private var pendingCreateRequest: ((Uri?) -> Unit)? = null
+        private var pendingOpenRequest: ((Uri?) -> Unit)? = null
 
         const val CHROME_CHANNEL = "AndroidBrowserChrome"
         const val CHROME_ASSET = "bridge/chrome.js"

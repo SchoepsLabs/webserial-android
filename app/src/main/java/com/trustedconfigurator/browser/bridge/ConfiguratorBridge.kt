@@ -52,7 +52,16 @@ class ConfiguratorBridge(
     private val serialSessions = ConcurrentHashMap<String, SerialSession>()
     private val usbSessions = ConcurrentHashMap<String, UsbSession>()
 
-    private val replyProxies = ConcurrentHashMap<String, MutableSet<JavaScriptReplyProxy>>()
+    /**
+     * The live reply channel per origin.
+     *
+     * A JavaScriptReplyProxy belongs to one *document*. Posting to one whose
+     * document has gone — after a reload or a navigation — segfaults inside the
+     * WebView, and because that is a native crash no runCatching can save it.
+     * So only the newest proxy per origin is kept, and [forgetProxies] drops
+     * them the moment a navigation starts.
+     */
+    private val replyProxies = ConcurrentHashMap<String, JavaScriptReplyProxy>()
 
     // ------------------------------------------------------------- listener
 
@@ -77,7 +86,8 @@ class ConfiguratorBridge(
             return
         }
 
-        replyProxies.getOrPut(origin) { java.util.Collections.synchronizedSet(mutableSetOf()) }.add(replyProxy)
+        // Last one wins: the newest message came from the live document.
+        replyProxies[origin] = replyProxy
 
         val request = Protocol.parseRequest(message.data)
         if (request == null) {
@@ -521,16 +531,23 @@ class ConfiguratorBridge(
     }
 
     private fun postEvent(origin: String, payload: String) {
-        val proxies = replyProxies[origin] ?: return
+        val proxy = replyProxies[origin] ?: return
         scope.launch(Dispatchers.Main) {
-            synchronized(proxies) { proxies.toList() }.forEach { proxy ->
-                // A proxy belonging to a page that has since navigated away throws;
-                // dropping it keeps the set from growing across reloads.
-                if (runCatching { proxy.postMessage(payload) }.isFailure) {
-                    proxies.remove(proxy)
-                }
+            if (runCatching { proxy.postMessage(payload) }.isFailure) {
+                replyProxies.remove(origin, proxy)
             }
         }
+    }
+
+    /**
+     * Drops the reply channels for a document that is going away.
+     *
+     * Must be called before a navigation commits. The page re-registers on its
+     * first call, and both configurators enumerate devices on load, so nothing
+     * is lost by forgetting eagerly.
+     */
+    fun forgetProxies() {
+        replyProxies.clear()
     }
 
     fun closeAll() {

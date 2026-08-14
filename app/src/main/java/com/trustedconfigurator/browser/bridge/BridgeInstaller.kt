@@ -27,6 +27,9 @@ class BridgeInstaller(
     private var scriptHandler: ScriptHandler? = null
     private var listenerInstalled = false
 
+    /** Origins the current registration was made for, null when nothing is installed. */
+    private var installedOrigins: Set<String>? = null
+
     /** Features the bridge cannot work without, empty when everything is present. */
     fun missingFeatures(): List<String> = buildList {
         if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) add("DOCUMENT_START_SCRIPT")
@@ -41,11 +44,22 @@ class BridgeInstaller(
     fun install(): Boolean {
         if (missingFeatures().isNotEmpty()) return false
 
-        remove()
-
         val origins = policy.usbOrigins()
+
+        /*
+         * Re-registering is destructive: removing a WebMessageListener kills the
+         * JavaScriptReplyProxy objects the live document is still holding, and
+         * using one afterwards segfaults the WebView. onResume fires on every
+         * dialog dismissal — the device picker, the USB permission prompt — so
+         * reinstalling unconditionally tore the bridge out from under a page
+         * mid-call. Only rebuild when the origin set has actually changed.
+         */
+        if (installedOrigins == origins) return origins.isNotEmpty()
+
+        remove()
         if (origins.isEmpty()) {
             TransferLog.record(TransferKind.EVENT, "-", "-", "No site is allowed to use USB; bridge not installed")
+            installedOrigins = origins
             return false
         }
 
@@ -53,6 +67,7 @@ class BridgeInstaller(
         listenerInstalled = true
 
         scriptHandler = WebViewCompat.addDocumentStartJavaScript(webView, polyfillSource(), origins)
+        installedOrigins = origins
 
         TransferLog.record(
             TransferKind.EVENT,
@@ -64,12 +79,16 @@ class BridgeInstaller(
     }
 
     fun remove() {
+        // Any proxy handed out by the listener being removed is about to become
+        // a dangling native pointer; drop them before the removal, not after.
+        bridge.forgetProxies()
         scriptHandler?.let { runCatching { it.remove() } }
         scriptHandler = null
         if (listenerInstalled) {
             runCatching { WebViewCompat.removeWebMessageListener(webView, Protocol.JS_OBJECT_NAME) }
             listenerInstalled = false
         }
+        installedOrigins = null
     }
 
     private fun polyfillSource(): String =

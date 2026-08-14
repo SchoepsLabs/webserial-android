@@ -125,7 +125,8 @@ WebDFU, WebADB.
 
 Treat that as *plausible*, not proven. The catch is the serial driver: only
 CDC-ACM has met real hardware. Most ESP32/ESP8266 boards use CP210x or CH340,
-and those drivers are written from the Linux sources and have never been run.
+and those drivers follow the MIT-licensed usb-serial-for-android implementation
+but have never been run.
 See Status.
 
 ## Status
@@ -136,16 +137,15 @@ Verified against real hardware (Pixel 8 Pro, Android 16, Betaflight STM32F411):
 - ESC Configurator connects through the 4-way passthrough
 - A board sent to DFU is detected, re-authorised and picked up by the configurator
 - Per-origin isolation holds: only the site you picked the device in can see it
+- Saving a CLI diff writes a real file through the Android save dialog
 
 **Not yet proven on hardware**, and worth knowing before you rely on it:
 
 | | |
 | --- | --- |
-| Saving files (presets, blackbox dumps) | unit-tested only, never written a real file |
 | WebUSB transfers (`controlTransferIn` etc.) | only run during an actual flash |
 | CP210x / CH34x / FTDI drivers | checked line by line against [usb-serial-for-android](https://github.com/mik3y/usb-serial-for-android), but still never run on hardware — this is what an ESP32 board would use |
 | Android 7–9 | minSdk claims support; only ever run on 16 |
-| Saving on a real device | the file layer is unit-tested, but no file has been written from a phone yet |
 
 CDC-ACM — every STM32/AT32/GD32/APM32/X32/RP2040 flight controller — is the one
 serial driver proven in the field.
@@ -154,8 +154,8 @@ serial driver proven in the field.
 
 The CH34x and FTDI baud-rate encodings and the CH34x initialisation sequence
 follow [usb-serial-for-android](https://github.com/mik3y/usb-serial-for-android)
-by Mike Wakerly and Google (MIT), which matches the Linux `ch341` and `ftdi_sio`
-drivers. Reading it caught real bugs: the first hand-written CH34x encoder wrote
+by Mike Wakerly and Google, under the MIT licence — the full notice is in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Reading it caught real bugs: the first hand-written CH34x encoder wrote
 the wrong register format entirely, and the FTDI one had two sub-divisor cases
 swapped and put the carry bit in the wrong field.
 
@@ -284,9 +284,15 @@ back on: the picker is the second gate here, not the only one.
 
 ### Saving and opening files
 
-A WebView has no File System Access API and silently drops `blob:` downloads, so
-before this layer existed **every save button in both configurators did nothing**
-— presets, CLI diffs, blackbox dumps, ESC's `dump.hex`.
+An Android WebView *does* expose a File System Access API — but only half of it
+works. `showOpenFilePicker` opens a real picker; `showSaveFilePicker` exists,
+resolves never, and throws nothing. Combined with `blob:` downloads being
+silently dropped, **every save button in both configurators did nothing** —
+presets, CLI diffs, blackbox dumps, ESC's `dump.hex` — with no error anywhere.
+
+The shims therefore replace the host implementations **unconditionally**.
+Detecting the API by existence is the wrong test when the API is present but
+dead, and that mistake cost an afternoon of debugging.
 
 Four mechanisms cover it:
 
@@ -321,8 +327,9 @@ Four independent layers, in order of what an attacker would have to defeat:
    other's hardware. Device access always requires an explicit native picker
    selection plus the Android USB permission dialog.
 
-Main-frame navigation off the allow-list is handed to the system browser, so the app does
-not quietly become a general-purpose browser.
+Main-frame navigation to anything that is **not** a plain https URL — `mailto:`,
+`intent:`, `market:` — is handed to the system. Ordinary https pages load here
+regardless of the site list; being off the list withholds USB, not navigation.
 
 ### DFU re-enumeration
 
@@ -375,7 +382,7 @@ including DFU handoff decisions and rejected messages.
 
 ## Tests
 
-**JS bridge — 55 tests, `node --test "js-tests/**/*.test.mjs"`.** These load the *shipped*
+**JS bridge — 56 tests, `node --test "js-tests/**/*.test.mjs"`.** These load the *shipped*
 `app/src/main/assets/bridge/polyfill.js` into a `node:vm` context against a mock bridge, so
 there is no second copy to drift. The ones that matter most pin the behaviours that pass a
 naive test but break real hardware:
@@ -389,7 +396,7 @@ naive test but break real hardware:
 - the same handle always returns the same object
 - a 200 KB write survives base64 chunking byte-for-byte
 
-**Kotlin — 71 tests, `./gradlew testDebugUnitTest`.** Base64 round-trips including a 512 KB
+**Kotlin — 97 tests, `./gradlew testDebugUnitTest`.** Base64 round-trips including a 512 KB
 payload, RPC framing and error mapping, filter parsing in both spellings, origin policy
 including look-alike hosts and userinfo smuggling, per-origin grant isolation and the
 serial-number matching rule, the DFU handoff state machine, `bmRequestType` assembly, and
@@ -439,7 +446,7 @@ handoff:
 The bootloader then enumerated with its DFU alternates parsed:
 
 ```
-STM32 BOOTLOADER   0483:DF11   permission granted   serial 2092336F5547
+STM32 BOOTLOADER   0483:DF11   permission granted   serial <redacted>
   exposed as  WebUSB DFU, known bootloader
   interface 0 alt 0  class FE/01/02  @Internal Flash /0x08000000/04*016Kg,01*064Kg,03*128Kg
   interface 0 alt 1  class FE/01/02  @Option Bytes /...
@@ -449,7 +456,7 @@ Betaflight's device picker switched to **"Betaflight STM32 BOOTLOADER"**, i.e. t
 reached the page through `navigator.usb.getDevices()`.
 
 The match was **SAME_VENDOR_BOOTLOADER**, not SAME_SERIAL: this board reports `0x8000000`
-in application mode and `2092336F5547` in DFU. Serial-only matching would have failed on
+in application mode and a different one in DFU. Serial-only matching would have failed on
 real hardware — the vendor fallback is what carried it.
 
 **Not proven on hardware:** the WebUSB *transfer* path. `WebUsbDfuTransport.open()` →
@@ -482,9 +489,11 @@ Two bugs only real hardware exposed, both fixed:
   `WEB_MESSAGE_LISTENER` (WebView 106+). The app detects this and says so rather than
   failing obscurely.
 - The CDC-ACM driver is proven against real hardware; **CP210x, CH34x and FTDI are not**.
-  Their register sequences follow the Linux drivers but have never been run against a
+  Their register sequences follow the MIT-licensed
+  [usb-serial-for-android](https://github.com/mik3y/usb-serial-for-android) — see
+  [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) — but have never been run against a
   physical adapter — the FTDI baud divisor and per-packet status-byte stripping are the
   most likely places for a first bug.
 - A USB device already claimed by another app that holds a persistent "open by default"
-  grant will be handed to that app on attach. Choose **Configurator Browser** in the
+  grant will be handed to that app on attach. Choose **WebSerial Browser** in the
   system chooser if more than one app claims the board.

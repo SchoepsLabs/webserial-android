@@ -13,7 +13,7 @@ const BRIDGE_NAME = "AndroidConfiguratorBridge";
  * The tests run the exact file the APK injects — no rebuilt or trimmed copy —
  * so a change that breaks Betaflight or ESC Configurator fails here.
  */
-export function createHarness({ installBridgeLate = false } = {}) {
+export function createHarness({ installBridgeLate = false, preexisting = null } = {}) {
     const source = fs.readFileSync(POLYFILL_PATH, "utf8");
 
     /** Every message the polyfill sent to native, in order. */
@@ -85,6 +85,12 @@ export function createHarness({ installBridgeLate = false } = {}) {
 
     if (!installBridgeLate) {
         sandbox[BRIDGE_NAME] = bridge;
+    }
+
+    // Simulates APIs the host already defines — an Android WebView ships a File
+    // System Access API that exists but does not work.
+    if (preexisting) {
+        Object.assign(sandbox, preexisting);
     }
 
     vm.createContext(sandbox);

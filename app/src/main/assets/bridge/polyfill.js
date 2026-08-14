@@ -713,7 +713,7 @@
     // ------------------------------------------- File System Access API
 
     /*
-     * A WebView has no showSaveFilePicker/showOpenFilePicker, and it silently
+     * A WebView's showSaveFilePicker never resolves, and it silently
      * drops `blob:` downloads triggered by <a download>. Between them those are
      * every save button in both configurators — presets, CLI diffs, blackbox
      * dumps, ESC's dump.hex. These shims route all of it through the Storage
@@ -964,6 +964,24 @@
 
     // ------------------------------------------------------------- install
 
+    /** Replaces an existing property, falling back to assignment if it is locked. */
+    function forceDefine(target, name, value) {
+        try {
+            Object.defineProperty(target, name, {
+                value,
+                writable: true,
+                enumerable: true,
+                configurable: true,
+            });
+        } catch (e) {
+            try {
+                target[name] = value;
+            } catch (inner) {
+                console.error("[configurator-bridge] could not install " + name, inner);
+            }
+        }
+    }
+
     function define(target, name, value) {
         Object.defineProperty(target, name, {
             value,
@@ -982,14 +1000,27 @@
         define(global.navigator, "usb", usbImpl);
     }
 
-    // Betaflight prefers these over its <a download> fallback, which gives the
-    // user a real "where do you want this?" dialog instead of a silent drop.
-    if (!global.showSaveFilePicker) {
-        define(global, "showSaveFilePicker", showSaveFilePicker);
-    }
-    if (!global.showOpenFilePicker) {
-        define(global, "showOpenFilePicker", showOpenFilePicker);
-    }
+    /*
+     * Installed unconditionally, replacing anything already there.
+     *
+     * A WebView can expose a File System Access API that is present but does
+     * not work — showOpenFilePicker resolves while showSaveFilePicker silently
+     * never does, because there is no save UI behind it. Deferring to an
+     * existing implementation therefore left pages calling a dead built-in, and
+     * a save button that did nothing at all with no error to show for it.
+     */
+    console.log(
+        "[configurator-bridge] file pickers before install:",
+        "save=" + typeof global.showSaveFilePicker,
+        "open=" + typeof global.showOpenFilePicker,
+    );
+    forceDefine(global, "showSaveFilePicker", showSaveFilePicker);
+    forceDefine(global, "showOpenFilePicker", showOpenFilePicker);
+    console.log(
+        "[configurator-bridge] file pickers after install:",
+        "save=" + typeof global.showSaveFilePicker,
+        "open=" + typeof global.showOpenFilePicker,
+    );
 
     if (global.document) {
         if (global.document.readyState === "loading") {
