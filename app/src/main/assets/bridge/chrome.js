@@ -50,12 +50,45 @@
          * handing horizontal movement to the widget. The thumb takes none, so
          * grabbing it is always a drag.
          */
-        ".input-range, .noUi-target, .MuiSlider-root, .rc-slider, input[type=\"range\"] {",
+        ".input-range, .noUi-target, .MuiSlider-root, .rc-slider {",
         "  touch-action: pan-y;",
         "}",
         ".input-range__slider, .input-range__slider-container,",
         ".noUi-handle, .MuiSlider-thumb, .rc-slider-handle, [role=\"slider\"] {",
         "  touch-action: none;",
+        "}",
+    ].join("\n");
+
+    /*
+     * Radix-style sliders, which is what Betaflight's motor tab is.
+     *
+     * Nuxt UI's USlider wraps reka-ui, and reka-ui sets role="slider" and
+     * data-orientation but no touch-action of its own — unlike Radix's own React
+     * build, which pins touch-action: none inline. Without it the browser may
+     * read a drag as a page pan, so a motor slider moves sometimes and scrolls
+     * the page the rest of the time.
+     *
+     * Those motor sliders are *vertical*, and a vertical slider cannot share the
+     * vertical axis with page scrolling — it has to take the whole gesture. A
+     * horizontal one only needs the horizontal axis, so the page still scrolls
+     * through it.
+     *
+     * touch-action is not inherited, but the browser intersects the values along
+     * the ancestor chain, so setting it on the root also covers the track, the
+     * range and the thumb inside it.
+     *
+     * Kept in rules of their own: :has() landed in Chrome 105, and an unknown
+     * selector invalidates the whole rule it appears in — sharing a rule with
+     * the plain selectors above would take those down on an older WebView.
+     */
+    var RADIX_SLIDER_CSS = [
+        "[data-orientation=\"horizontal\"]:has([role=\"slider\"]) { touch-action: pan-y; }",
+        "[data-orientation=\"vertical\"]:has([role=\"slider\"]) { touch-action: none; }",
+        "[role=\"slider\"][aria-orientation=\"vertical\"] { touch-action: none; }",
+        "[data-orientation]:has([role=\"slider\"]) * {",
+        "  -webkit-user-select: none;",
+        "  user-select: none;",
+        "  -webkit-touch-callout: none;",
         "}",
     ].join("\n");
 
@@ -67,7 +100,7 @@
         }
         var style = doc.createElement("style");
         style.id = "__configurator_slider_css";
-        style.textContent = SLIDER_CSS;
+        style.textContent = SLIDER_CSS + "\n" + RADIX_SLIDER_CSS;
         root.appendChild(style);
     }
 
