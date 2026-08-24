@@ -10,6 +10,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.view.MenuItem
+import android.view.ViewGroup
 import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
@@ -670,9 +671,28 @@ class MainActivity : AppCompatActivity(), DevicePicker, FilePicker {
     }
 
     override fun onDestroy() {
+        /*
+         * Order matters here, and getting it wrong crashes on the way out.
+         *
+         * The bridge hands JavaScriptReplyProxy objects to the live document and
+         * pushes USB attach and detach events through them. Those proxies point
+         * into the WebView's native side, so anything still holding one when
+         * destroy() runs posts into freed memory. installer.remove() drops the
+         * proxies and unregisters the listener, and hub.stop() goes first so a
+         * detach broadcast cannot arrive mid-teardown and repopulate them.
+         */
+        hub.stop()
+        installer.remove()
         bridge.closeAll()
         files.closeAll()
-        hub.stop()
+
+        /*
+         * A WebView has to leave the view hierarchy before destroy(). Left
+         * attached, the parent can still measure or draw a view whose native
+         * peer is already gone.
+         */
+        binding.webView.stopLoading()
+        (binding.webView.parent as? ViewGroup)?.removeView(binding.webView)
         binding.webView.destroy()
         super.onDestroy()
     }
