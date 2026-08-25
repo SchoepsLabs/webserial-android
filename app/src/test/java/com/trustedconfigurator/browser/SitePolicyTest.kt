@@ -152,4 +152,43 @@ class SitePolicyTest {
 
         assertFalse(policy.sites().first { it.origin == "https://evil.test" }.builtIn)
     }
+
+    @Test
+    fun `adding a site that already exists never takes its USB access away`() {
+        /*
+         * Reported from a phone: Betaflight showed its own "this browser has no
+         * Web Serial" screen, and the stored policy held one entry —
+         * app.betaflight.com with usb false. Typing a built-in's address into
+         * the add-a-site box called addSite() with the parameter's false
+         * default, which overwrote the built-in's flag. Adding is not revoking.
+         */
+        val policy = SitePolicy(InMemorySitePersistence())
+        assertTrue(policy.isUsbAllowed(betaflight))
+
+        policy.addSite(betaflight)
+
+        assertTrue("adding a built-in switched its USB off", policy.isUsbAllowed(betaflight))
+    }
+
+    @Test
+    fun `adding a user site again keeps the USB access it was granted`() {
+        val policy = SitePolicy(InMemorySitePersistence())
+        policy.addSite(custom)
+        policy.setUsbEnabled(custom, true)
+
+        policy.addSite(custom)
+
+        assertTrue("re-adding a site switched its USB off", policy.isUsbAllowed(custom))
+    }
+
+    @Test
+    fun `the toggle is still the way to switch USB off`() {
+        // The fix must not make access impossible to revoke.
+        val policy = SitePolicy(InMemorySitePersistence())
+        policy.setUsbEnabled(betaflight, false)
+        assertFalse(policy.isUsbAllowed(betaflight))
+
+        policy.setUsbEnabled(betaflight, true)
+        assertTrue(policy.isUsbAllowed(betaflight))
+    }
 }

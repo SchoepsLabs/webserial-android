@@ -106,7 +106,15 @@ class SitePolicy(private val persistence: SitePersistence) {
     fun addSite(url: String, title: String? = null, usbEnabled: Boolean = false): Site? {
         val origin = OriginPolicy.normalize(url) ?: return null
         val existing = sites[origin]
-        val site = existing?.copy(usbEnabled = usbEnabled)
+        /*
+         * Adding a site is not a way to revoke one. Typing an origin that is
+         * already known — a built-in, or one added earlier with USB on — used to
+         * overwrite its flag with this parameter's `false` default, which
+         * silently switched USB off for a bundled configurator. The page then
+         * showed its own "browser has no Web Serial" message and the app said
+         * nothing. Turning access off is setUsbEnabled's job, behind the toggle.
+         */
+        val site = existing?.copy(usbEnabled = existing.usbEnabled || usbEnabled)
             ?: Site(origin, title?.takeIf { it.isNotBlank() } ?: origin.removePrefix("https://"), false, usbEnabled)
         sites[origin] = site
         persist()
