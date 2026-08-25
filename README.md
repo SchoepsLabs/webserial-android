@@ -451,6 +451,40 @@ The configurator moved to its connected state with the full tab set. ESC Configu
 and detects the serial polyfill (it offers "Select Serial Port" rather than its
 unsupported-browser screen).
 
+### Slider gestures, measured on device
+
+Both configurators had sliders that a touch could not drive, for two unrelated reasons.
+Measured through the WebView's own devtools, on each site's real origin.
+
+ESC Configurator's sliders are `react-input-range`: a `div` thumb inside a `span` that also
+holds the value label. A touch on that label read as a long-press on text, so a selection
+started and the drag never reached the slider. Computed styles on that exact markup, on
+`esc-configurator.com`:
+
+```
+                      with the fix      without
+.input-range root     none / pan-y      auto / auto
+value label           none              auto        <- the text that was being grabbed
+thumb                 none / none       auto / auto
+ordinary paragraph    auto              auto        <- still selectable, deliberately
+```
+
+Betaflight's motor tab is Nuxt UI's `USlider` (reka-ui) with `orientation="vertical"`, which
+emits `role="slider"` and `data-orientation` but no `touch-action` of its own. The browser
+was free to read a drag as a page pan, so a motor slider moved sometimes and scrolled the
+page the rest of the time. Dispatching a real 140 px touch drag up the slider, on
+`app.betaflight.com`:
+
+```
+slider, fix on    scrollTop  0    <- gesture stays with the slider
+slider, fix off   scrollTop  132  <- the reported bug, reproduced
+beside it, on     scrollTop  132  <- the page still scrolls normally
+```
+
+The track computes `touch-action: auto` and is still governed, which confirms the ancestor
+intersection the rule relies on: `none` on the slider root covers the track and thumb inside
+it.
+
 ### DFU re-enumeration, on hardware
 
 The board was sent to its bootloader with the CLI `bl` command. The serial side closed
