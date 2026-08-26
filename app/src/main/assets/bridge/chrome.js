@@ -95,7 +95,17 @@
     var SLIDER_ROW_CSS = [
         "label:has(.input-range), label:has([role=\"slider\"]),",
         "li:has([role=\"slider\"]), .number:has(.input-range),",
-        "li:has(.input-range) {",
+        "li:has(.input-range),",
+        /*
+         * The wrapper that holds a slider as a direct child, whatever the
+         * library. ESC Configurator's motor control is rc-slider inside
+         * <div class="slider"><h3>Motor 1</h3><slider/></div>, and the master is
+         * the same shape — the heading is a sibling of the widget, so covering
+         * the widget alone left "Master Speed" and "Motor 2" grabbable. With
+         * motor output armed, a stray selection there is not a cosmetic problem.
+         */
+        ":has(> .rc-slider), :has(> .input-range), :has(> .noUi-target),",
+        ":has(> .MuiSlider-root), :has(> [role=\"slider\"]), :has(> input[type=\"range\"]) {",
         "  -webkit-user-select: none;",
         "  user-select: none;",
         "  -webkit-touch-callout: none;",

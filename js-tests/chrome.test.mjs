@@ -381,3 +381,17 @@ test("the row rules are still anchored on containing a slider", () => {
         }
     }
 });
+
+test("the wrapper holding a slider as a direct child is covered", () => {
+    /*
+     * ESC Configurator's motor control is rc-slider inside
+     * <div class="slider"><h3>Motor 1</h3><slider/></div>, and Master Speed has
+     * the same shape. The heading is a sibling of the widget, so covering the
+     * widget alone left it selectable — and with motor output armed, a stray
+     * selection over the motor sliders is not a cosmetic problem.
+     */
+    const text = loadChrome().style().textContent;
+    assert.match(text, /:has\(> \.rc-slider\)/);
+    assert.match(text, /:has\(> \[role="slider"\]\)/);
+    assert.match(text, /:has\(> input\[type="range"\]\)/);
+});
