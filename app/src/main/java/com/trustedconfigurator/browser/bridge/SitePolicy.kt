@@ -103,7 +103,21 @@ class SitePolicy(private val persistence: SitePersistence) {
      * @return the added site, or null when the address is not a usable https origin.
      */
     @Synchronized
-    fun addSite(url: String, title: String? = null, usbEnabled: Boolean = false): Site? {
+    /**
+     * Adds an origin, with USB access on unless told otherwise.
+     *
+     * On by default because typing an address in is already the act of intent,
+     * and because the origin flag is not what protects the hardware — the native
+     * device picker is. A page with navigator.serial can ask; it cannot reach
+     * anything until a device is picked and Android grants permission, and
+     * getPorts() only ever returns what was already granted to that origin.
+     * Desktop Chrome hands every https origin the same API with no list at all.
+     *
+     * Off by default made the app refuse to do the one thing it exists for until
+     * the user found a toggle, usually after a configurator had already shown
+     * its own unsupported-browser screen.
+     */
+    fun addSite(url: String, title: String? = null, usbEnabled: Boolean = true): Site? {
         val origin = OriginPolicy.normalize(url) ?: return null
         val existing = sites[origin]
         /*

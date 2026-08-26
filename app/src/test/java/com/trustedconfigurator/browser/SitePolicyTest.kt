@@ -44,13 +44,31 @@ class SitePolicyTest {
     }
 
     @Test
-    fun `a site added by the user starts without USB`() {
+    fun `a site added by the user can use USB straight away`() {
+        /*
+         * This used to default to off, and the result was an app that refused
+         * to do the one thing it exists for until the user found a toggle —
+         * usually after the configurator had already shown its own
+         * unsupported-browser screen, which reads as a broken app.
+         *
+         * The origin flag is not what guards the hardware anyway: the native
+         * device picker is. A page may ask; it reaches nothing until a device is
+         * picked and Android grants permission.
+         */
         val policy = SitePolicy(InMemorySitePersistence())
         val site = policy.addSite(custom)
 
         assertEquals(custom, site!!.origin)
         assertTrue(policy.isKnown(custom))
-        // Adding is navigation only; USB stays off until an explicit opt-in.
+        assertTrue(policy.isUsbAllowed(custom))
+    }
+
+    @Test
+    fun `a site can still be added without USB when asked explicitly`() {
+        // The toggle has to keep working in both directions.
+        val policy = SitePolicy(InMemorySitePersistence())
+        policy.addSite(custom, usbEnabled = false)
+
         assertFalse(policy.isUsbAllowed(custom))
     }
 

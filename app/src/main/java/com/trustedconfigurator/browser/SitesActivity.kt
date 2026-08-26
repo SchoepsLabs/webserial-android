@@ -10,6 +10,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import com.google.android.material.materialswitch.MaterialSwitch
 import com.google.android.material.snackbar.Snackbar
+import com.trustedconfigurator.browser.bridge.BrowserSettings
 import com.trustedconfigurator.browser.bridge.OriginPolicy
 import com.trustedconfigurator.browser.bridge.SharedPreferencesSitePersistence
 import com.trustedconfigurator.browser.bridge.Site
@@ -17,22 +18,38 @@ import com.trustedconfigurator.browser.bridge.SitePolicy
 import com.trustedconfigurator.browser.databinding.ActivitySitesBinding
 
 /**
- * Which sites exist and which of them may use USB.
+ * Which sites exist, which of them may use USB, and whether they are kept
+ * available offline.
  *
- * The built-in configurators ship with USB on. Anything added here starts off,
- * and turning it on shows the same warning as the in-page toggle — a site never
- * gains native USB without the user reading what that means.
+ * Sites can use USB, added ones included — a page may ask, and reaches nothing
+ * until a device is picked in Android's own dialog. The switch here is how you
+ * stop a site asking at all.
  */
 class SitesActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivitySitesBinding
     private lateinit var policy: SitePolicy
+    private lateinit var settings: BrowserSettings
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivitySitesBinding.inflate(layoutInflater)
         setContentView(binding.root)
         setSupportActionBar(binding.toolbar)
+
+        settings = BrowserSettings(this)
+        binding.offlineSwitch.isChecked = settings.offlinePrewarmEnabled
+        binding.offlineSwitch.setOnCheckedChangeListener { _, checked ->
+            settings.offlinePrewarmEnabled = checked
+            if (!checked) return@setOnCheckedChangeListener
+            // Switching it on is a request to do it, not permission for later.
+            settings.lastPrewarm = 0L
+            val origins = policy.sites().map { it.origin }
+            OfflinePrewarm(this, settings).run(origins) { cached ->
+                Snackbar.make(binding.root, getString(R.string.offline_done, cached), Snackbar.LENGTH_LONG).show()
+            }
+            Snackbar.make(binding.root, R.string.offline_on, Snackbar.LENGTH_SHORT).show()
+        }
         supportActionBar?.setTitle(R.string.sites_title)
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
 
@@ -45,7 +62,7 @@ class SitesActivity : AppCompatActivity() {
                 Snackbar.make(binding.root, R.string.bad_address, Snackbar.LENGTH_LONG).show()
                 return@setOnClickListener
             }
-            policy.addSite(origin, usbEnabled = false)
+            policy.addSite(origin, usbEnabled = true)
             binding.newSite.setText("")
             render()
         }
@@ -113,13 +130,15 @@ class SitesActivity : AppCompatActivity() {
                 isChecked = site.usbEnabled
                 setOnClickListener {
                     if (isChecked) {
-                        // Bounce back until the warning is accepted, so a stray
-                        // tap cannot hand a site USB access.
-                        isChecked = false
-                        confirmEnable(site)
-                    } else {
-                        policy.setUsbEnabled(site.origin, false)
+                        policy.setUsbEnabled(site.origin, true)
                         render()
+                    } else {
+                        // Bounce back until the warning is read. Switching a site
+                        // off stops every configurator on it working, and the page
+                        // reports that as its own browser being unsupported — so
+                        // it has to be a decision, not a stray tap.
+                        isChecked = true
+                        confirmDisable(site)
                     }
                 }
             },
@@ -128,14 +147,14 @@ class SitesActivity : AppCompatActivity() {
         return row
     }
 
-    private fun confirmEnable(site: Site) {
+    private fun confirmDisable(site: Site) {
         AlertDialog.Builder(this)
-            .setTitle(getString(R.string.enable_usb_title, site.origin))
-            .setMessage(R.string.enable_usb_message)
+            .setTitle(getString(R.string.disable_usb_title, site.origin))
+            .setMessage(R.string.disable_usb_message)
             .setNegativeButton(android.R.string.cancel) { _, _ -> render() }
             .setOnCancelListener { render() }
-            .setPositiveButton(R.string.enable_usb_confirm) { _, _ ->
-                policy.setUsbEnabled(site.origin, true)
+            .setPositiveButton(R.string.disable_usb_confirm) { _, _ ->
+                policy.setUsbEnabled(site.origin, false)
                 render()
             }
             .show()

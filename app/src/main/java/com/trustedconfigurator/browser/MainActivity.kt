@@ -178,7 +178,7 @@ class MainActivity : AppCompatActivity(), DevicePicker, FilePicker {
             }
         }
         binding.menuButton.setOnClickListener { showMenu() }
-        binding.usbIndicator.setOnClickListener { toggleUsbForCurrentSite() }
+        binding.usbIndicator.setOnClickListener { onUsbIndicatorTapped() }
         binding.exitFullScreen.setOnClickListener { applyFullScreen(false) }
 
         installScrollReporter()
@@ -440,15 +440,27 @@ class MainActivity : AppCompatActivity(), DevicePicker, FilePicker {
         if (policy.isUsbAllowed(origin)) return
         if (SitePolicy.BUILT_IN.none { it.origin == origin }) return
         Snackbar.make(binding.root, R.string.usb_off_here, Snackbar.LENGTH_LONG)
-            .setAction(R.string.usb_off_enable) { toggleUsbForCurrentSite() }
+            .setAction(R.string.usb_off_enable) { enableUsbForCurrentSite() }
             .show()
     }
 
-    private fun toggleUsbForCurrentSite() {
+    /**
+     * The USB icon in the address bar. Deliberately one-way.
+     *
+     * Turning access *on* is one tap, because a page that cannot see the
+     * hardware is the app failing at its purpose. Turning it *off* is not
+     * reachable from here at all: it used to be the same tap, so a stray touch
+     * next to the address bar silently broke every configurator on that site,
+     * and the page's own "this browser has no Web Serial" screen is what the
+     * user saw. Switching a site off now lives under Sites, behind a
+     * confirmation, where it is a decision rather than an accident.
+     */
+    private fun onUsbIndicatorTapped() {
         val origin = currentOrigin ?: return
         if (policy.isUsbAllowed(origin)) {
-            policy.setUsbEnabled(origin, false)
-            onPolicyChanged(getString(R.string.usb_disabled_for, origin))
+            Snackbar.make(binding.root, R.string.usb_on_here, Snackbar.LENGTH_LONG)
+                .setAction(R.string.menu_sites) { startActivity(Intent(this, SitesActivity::class.java)) }
+                .show()
             return
         }
         AlertDialog.Builder(this)
@@ -460,6 +472,13 @@ class MainActivity : AppCompatActivity(), DevicePicker, FilePicker {
                 onPolicyChanged(getString(R.string.usb_enabled_for, origin))
             }
             .show()
+    }
+
+    /** Turns USB on for the current site without asking; used by the "it is off" prompt. */
+    private fun enableUsbForCurrentSite() {
+        val origin = currentOrigin ?: return
+        policy.addSite(origin, binding.webView.title, usbEnabled = true)
+        onPolicyChanged(getString(R.string.usb_enabled_for, origin))
     }
 
     /**

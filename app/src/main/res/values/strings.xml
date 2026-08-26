@@ -42,7 +42,7 @@
     <string name="add_site">Add this site</string>
     <string name="remove_site">Remove</string>
     <string name="built_in_site">Built in</string>
-    <string name="sites_hint">Built-in configurators can use USB out of the box. Any other site you add starts with USB switched off.</string>
+    <string name="sites_hint">Every site here can use USB. A page can only ask — nothing is reachable until you pick a device and Android allows it. Switch a site off to stop it asking at all.</string>
 
     <string name="download_started">Downloading %1$s</string>
     <string name="download_failed">Could not download %1$s</string>
@@ -61,9 +61,17 @@ The websites this app loads are always current; the app itself is not. Update to
     <string name="update_auto_on">Update checks on — the app asks GitHub once a day</string>
     <string name="update_auto_off">Update checks off — the app no longer asks GitHub about new versions</string>
 
+    <string name="usb_on_here">This site can use USB. It still has to ask, and you pick the device.</string>
+    <string name="disable_usb_title">Stop %1$s using USB?</string>
+    <string name="disable_usb_message">Configurators on this site will no longer see your hardware. Most report that as your browser being unsupported rather than as a setting, so it can look like the app is broken.
+
+You can switch it back on here at any time.</string>
+    <string name="disable_usb_confirm">Switch off</string>
+
     <string name="usb_off_here">USB is switched off for this site, so it cannot see your hardware</string>
     <string name="usb_off_enable">Turn on</string>
 
+    <string name="offline_summary">Visits these sites over Wi-Fi so they still work at a field with no signal</string>
     <string name="offline_toggle">Keep sites available offline</string>
     <string name="offline_on">Preloading the configurators over Wi-Fi</string>
     <string name="offline_off">Offline preload off. Sites still cache themselves once you open them.</string>

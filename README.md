@@ -134,10 +134,10 @@ These four ship with USB enabled:
 | <https://am32.ca> | AM32 Configurator |
 | <https://expresslrs.github.io> | ExpressLRS Web Flasher |
 
-They are presets, not the product. Type **any** address into the bar — a site
-reaches USB only after you explicitly enable it for that origin, behind a
-warning, and each origin only ever sees the devices you picked there. See
-[Sites and USB access](#sites-and-usb-access).
+They are presets, not the product. Type **any** address into the bar and it can
+use USB too — but a site can only *ask*. Nothing is reachable until you pick a
+device in Android's own dialog, and each origin only ever sees the devices you
+picked there. See [Sites and USB access](#sites-and-usb-access).
 
 Betaflight also publishes [its own Capacitor Android APK](https://downloads.betaflight.com/).
 It is official and supported — but its Capacitor config is `"webDir": "src/dist"`,
@@ -298,23 +298,32 @@ any would be actively harmful.
 
 ### Sites and USB access
 
-Navigation and USB are deliberately separate questions. Navigation is open —
-it is a browser, you can type any address. USB is not.
+Sites can use USB, including ones you add yourself. What a site cannot do is
+reach anything on its own:
 
-- The four configurators above ship with USB enabled.
-- Any other site starts with USB **off**. Enabling it takes an explicit tap on
-  the USB chip in the address bar (or the switch under *Sites*), and shows a
-  warning first. A stray tap on the switch bounces back until the dialog is
-  accepted.
-- Access can be revoked at any time, including for the built-ins.
+- A page may **ask** — call `requestPort()` or `requestDevice()` and get
+  Android's own picker.
+- Nothing is reachable until **you pick a device there** and Android grants the
+  app permission for it.
+- `getPorts()` and `getDevices()` return only what was already granted **to that
+  origin**. One site cannot see another's devices.
+- Access can be switched off per site at any time, including for the built-ins,
+  under *Sites* — behind a confirmation, and deliberately not from the address
+  bar. Turning access **on** is one tap; turning it **off** is not something a
+  stray touch should be able to do, because the page reports the result as its
+  own browser being unsupported and the app looks broken instead.
+
+This started out stricter — a site you added had USB off until you found a
+toggle. That was the wrong trade. The origin flag was never what protected the
+hardware; the device picker is. What off-by-default actually produced was an app
+that refused to do the thing it exists for, usually after the configurator had
+already shown its own unsupported-browser screen, which reads as a broken app
+rather than a policy. Desktop Chrome hands `navigator.serial` to every https
+origin and relies on the picker alone.
 
 Because origin rules are fixed when the injections are registered, changing the
 policy re-registers both and reloads the page — a site cannot gain or keep access
 mid-document.
-
-Desktop Chrome hands `navigator.serial` to *every* site and relies on the device
-picker alone. This app does not, because a WebView has no site isolation to fall
-back on: the picker is the second gate here, not the only one.
 
 ### Saving and opening files
 

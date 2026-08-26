@@ -48,6 +48,51 @@
 
     </LinearLayout>
 
+    <!--
+      Offline lives here, not only in the menu: this is the screen people open
+      when they are thinking about which sites they use, so it is where they
+      look for "make these work without a connection".
+    -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:paddingTop="4dp"
+        android:paddingBottom="12dp">
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/offline_toggle"
+                android:textColor="@color/chrome_text"
+                android:textSize="15sp" />
+
+            <TextView
+                android:id="@+id/offlineSummary"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/offline_summary"
+                android:textColor="@color/chrome_hint"
+                android:textSize="12sp" />
+
+        </LinearLayout>
+
+        <com.google.android.material.materialswitch.MaterialSwitch
+            android:id="@+id/offlineSwitch"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_vertical" />
+
+    </LinearLayout>
+
     <ScrollView
         android:layout_width="match_parent"
         android:layout_height="0dp"
