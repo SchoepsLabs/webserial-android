@@ -46,12 +46,14 @@ android {
             isMinifyEnabled = false
             applicationIdSuffix = ".debug"
             // A debug build installs alongside the real one, and until now both
-            // were called "WebSerial Browser" — two identical icons with no way
+            // were called the same thing — two identical icons with no way
             // to tell which is which.
-            resValue("string", "app_name", "WebSerial Browser (debug)")
+            resValue("string", "app_name", "WebSerial USB (debug)")
         }
         release {
-            resValue("string", "app_name", "WebSerial Browser")
+            // "USB" rather than "Browser": the launcher searches the label, and USB is
+            // the word someone types when looking for this.
+            resValue("string", "app_name", "WebSerial USB")
             // Left off deliberately: the bridge is reached reflectively by
             // WebView through WebMessageListener, and a mis-shrunk build would
             // fail only at runtime, on a stranger's phone.

@@ -1,4 +1,4 @@
-# WebSerial Browser
+# WebSerial USB
 
 [![build](https://github.com/SchoepsLabs/webserial-android/actions/workflows/ci.yml/badge.svg)](https://github.com/SchoepsLabs/webserial-android/actions/workflows/ci.yml)
 [![release](https://img.shields.io/github/v/release/SchoepsLabs/webserial-android)](https://github.com/SchoepsLabs/webserial-android/releases/latest)
@@ -642,5 +642,5 @@ Two bugs only real hardware exposed, both fixed:
   physical adapter — the FTDI baud divisor and per-packet status-byte stripping are the
   most likely places for a first bug.
 - A USB device already claimed by another app that holds a persistent "open by default"
-  grant will be handed to that app on attach. Choose **WebSerial Browser** in the
+  grant will be handed to that app on attach. Choose **WebSerial USB** in the
   system chooser if more than one app claims the board.

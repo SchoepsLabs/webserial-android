@@ -294,7 +294,13 @@
     global.document.addEventListener("pointercancel", endInterruptedDrag, true);
     global.document.addEventListener("touchcancel", endInterruptedDrag, true);
 
-    var EDGE_BAND = 40;
+    /*
+     * How close to a screen edge counts as an edge gesture, in CSS pixels. Used
+     * both for the exclusion rectangles and for refusing edge drags while
+     * motors are armed. Android's own back-gesture zone is around 20dp; this is
+     * wider because a swipe that starts just inside it still ends up scrolling.
+     */
+    var EDGE_BAND = 56;
     var MAX_RECTS = 10;
     var lastExclusions = "";
 
@@ -425,6 +431,20 @@
         var width = global.innerWidth || 0;
         edgeGesture = !!(lastArmed && touch &&
             (touch.clientX <= EDGE_BAND || touch.clientX >= width - EDGE_BAND));
+        /*
+         * Refused at touchstart, not just at touchmove. Cancelling the move is
+         * unreliable: once the browser has decided a gesture is a scroll it
+         * marks the later moves non-cancelable, and on a page that scrolls an
+         * inner element — which Betaflight's motor tab does — that decision can
+         * be made before the first move arrives. Refusing the start settles it
+         * for the whole gesture.
+         *
+         * This suppresses the compatibility mouse events for that touch, not
+         * pointer events, so a slider reaching the edge still tracks normally.
+         */
+        if (edgeGesture && event.cancelable) {
+            event.preventDefault();
+        }
     }
 
     function onEdgeTouchMove(event) {
@@ -433,8 +453,8 @@
         }
     }
 
-    global.document.addEventListener("touchstart", onEdgeTouchStart, { passive: true, capture: true });
-    // Not passive: refusing the scroll is the entire point.
+    // Neither is passive: refusing the scroll is the entire point.
+    global.document.addEventListener("touchstart", onEdgeTouchStart, { passive: false, capture: true });
     global.document.addEventListener("touchmove", onEdgeTouchMove, { passive: false, capture: true });
 
     var lastArmed = false;

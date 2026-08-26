@@ -575,3 +575,31 @@ test("an edge drag scrolls normally when nothing is armed", () => {
 
     assert.equal(move.wasPrevented(), false, "edge scrolling was blocked with no motors armed");
 });
+
+test("an edge gesture is refused at touchstart, not only at touchmove", () => {
+    /*
+     * Cancelling the move is unreliable: once the browser has decided a gesture
+     * is a scroll it marks later moves non-cancelable, and on a page that
+     * scrolls an inner element — Betaflight's motor tab — that can happen
+     * before the first move arrives.
+     */
+    const chrome = loadChrome({ armed: { 'input[name="enable-motor-control"]:checked': {} } });
+    chrome.tick();
+
+    const start = edgeTouch(8);
+    chrome.fire("touchstart", start.event);
+
+    assert.equal(start.wasPrevented(), true, "the edge gesture was allowed to begin as a scroll");
+});
+
+test("a touchstart away from the edge is never cancelled", () => {
+    // Cancelling touchstart suppresses the compatibility click for that touch,
+    // so it must not happen anywhere the page still needs ordinary taps.
+    const chrome = loadChrome({ armed: { 'input[name="enable-motor-control"]:checked': {} } });
+    chrome.tick();
+
+    const start = edgeTouch(200);
+    chrome.fire("touchstart", start.event);
+
+    assert.equal(start.wasPrevented(), false, "an ordinary tap was cancelled");
+});
