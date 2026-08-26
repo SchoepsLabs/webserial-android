@@ -92,6 +92,29 @@
      *
      * Anchored on containing a slider, so this can never reach ordinary prose.
      */
+    /*
+     * A scroll lock the app can switch on while motors can spin.
+     *
+     * Betaflight already swallows wheel events over its motor test when testing
+     * is armed — "so the page cannot scroll out from under the pointer while the
+     * motors can spin" — but there is no touch equivalent, and on a phone touch
+     * is all there is.
+     *
+     * Armed state cannot be detected from out here without guessing: ESC
+     * Configurator's settings page also pairs checkboxes with sliders, so every
+     * heuristic that caught the motor panel also killed scrolling on a page
+     * where scrolling is all you do. So the app asks, and the user decides.
+     */
+    var SCROLL_LOCK_CSS = [
+        "html.__configurator_scroll_lock, html.__configurator_scroll_lock body {",
+        "  touch-action: none;",
+        "  overscroll-behavior: none;",
+        "}",
+        "html.__configurator_scroll_lock * { touch-action: none; }",
+        // The sliders themselves already take the whole gesture, so they keep
+        // working; this only stops the page moving underneath them.
+    ].join("\n");
+
     var SLIDER_ROW_CSS = [
         "label:has(.input-range), label:has([role=\"slider\"]),",
         "li:has([role=\"slider\"]), .number:has(.input-range),",
@@ -131,7 +154,7 @@
         }
         var style = doc.createElement("style");
         style.id = "__configurator_slider_css";
-        style.textContent = [SLIDER_CSS, RADIX_SLIDER_CSS, SLIDER_ROW_CSS].join("\n");
+        style.textContent = [SLIDER_CSS, RADIX_SLIDER_CSS, SLIDER_ROW_CSS, SCROLL_LOCK_CSS].join("\n");
         root.appendChild(style);
     }
 
@@ -336,6 +359,18 @@
             post({ chrome: "expand" });
         }
     }
+
+    /** Called by the app when the scroll lock is switched on or off. */
+    global.__configuratorSetScrollLock = function (locked) {
+        var root = global.document.documentElement;
+        if (!root) return false;
+        if (locked) {
+            root.classList.add("__configurator_scroll_lock");
+        } else {
+            root.classList.remove("__configurator_scroll_lock");
+        }
+        return locked;
+    };
 
     global.addEventListener("resize", scheduleEdgeReport, { passive: true });
     global.document.addEventListener("DOMContentLoaded", scheduleEdgeReport);

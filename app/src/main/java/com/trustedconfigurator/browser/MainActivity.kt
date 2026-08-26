@@ -80,6 +80,9 @@ class MainActivity : AppCompatActivity(), DevicePicker, FilePicker {
     private lateinit var settings: BrowserSettings
     private lateinit var files: FileBridge
 
+    /** Session-only: see applyScrollLock. */
+    private var scrollLocked = false
+
     private var currentOrigin: String? = null
     private var chromeExpanded = true
 
@@ -311,6 +314,10 @@ class MainActivity : AppCompatActivity(), DevicePicker, FilePicker {
             isCheckable = true
             isChecked = settings.offlinePrewarmEnabled
         }
+        menu.add(GROUP_ACTIONS, ID_SCROLL_LOCK, 108, R.string.scroll_lock_toggle).apply {
+            isCheckable = true
+            isChecked = scrollLocked
+        }
 
         popup.setOnMenuItemClickListener { item -> onMenuItem(item) }
         popup.show()
@@ -324,6 +331,12 @@ class MainActivity : AppCompatActivity(), DevicePicker, FilePicker {
         return when (item.itemId) {
             ID_RELOAD -> {
                 binding.webView.reload(); true
+            }
+            ID_SCROLL_LOCK -> {
+                scrollLocked = !scrollLocked
+                applyScrollLock()
+                toast(getString(if (scrollLocked) R.string.scroll_lock_on else R.string.scroll_lock_off))
+                true
             }
             ID_OFFLINE -> {
                 settings.offlinePrewarmEnabled = !settings.offlinePrewarmEnabled
@@ -577,6 +590,25 @@ class MainActivity : AppCompatActivity(), DevicePicker, FilePicker {
             if (online) WebSettings.LOAD_DEFAULT else WebSettings.LOAD_CACHE_ELSE_NETWORK
     }
 
+    /**
+     * Holds the page still while motors can spin.
+     *
+     * Betaflight already swallows wheel events over its motor test when testing
+     * is armed, "so the page cannot scroll out from under the pointer while the
+     * motors can spin". There is no touch equivalent, and on a phone touch is
+     * all there is: a scroll that moves the page mid-drag moves the slider under
+     * your finger with it.
+     *
+     * Not persisted. A browser that would not scroll on the next launch, for a
+     * reason set days ago, is a browser that looks broken.
+     */
+    private fun applyScrollLock() {
+        binding.webView.evaluateJavascript(
+            "window.__configuratorSetScrollLock && window.__configuratorSetScrollLock($scrollLocked)",
+            null,
+        )
+    }
+
     private fun applyDesktopMode() {
         val webSettings = binding.webView.settings
         if (settings.desktopMode) {
@@ -652,6 +684,7 @@ class MainActivity : AppCompatActivity(), DevicePicker, FilePicker {
             binding.addressBar.setText(url)
             updateUsbIndicator()
             warnIfUsbOffForConfigurator()
+            if (scrollLocked) applyScrollLock()
             settings.lastUrl = url
         }
     }
@@ -880,6 +913,7 @@ class MainActivity : AppCompatActivity(), DevicePicker, FilePicker {
         const val ID_UPDATES = 1005
         const val ID_AUTO_UPDATES = 1006
         const val ID_OFFLINE = 1007
+        const val ID_SCROLL_LOCK = 1008
         const val UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000L
         const val PREWARM_DELAY_MS = 8_000L
 

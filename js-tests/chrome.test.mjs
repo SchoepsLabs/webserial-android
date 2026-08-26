@@ -395,3 +395,35 @@ test("the wrapper holding a slider as a direct child is covered", () => {
     assert.match(text, /:has\(> \[role="slider"\]\)/);
     assert.match(text, /:has\(> input\[type="range"\]\)/);
 });
+
+test("the scroll lock is a class on the document the app can toggle", () => {
+    /*
+     * Betaflight swallows wheel events over its motor test while testing is
+     * armed, "so the page cannot scroll out from under the pointer while the
+     * motors can spin". There is no touch equivalent, and on a phone touch is
+     * all there is — a scroll mid-drag takes the slider with it.
+     */
+    const chrome = loadChrome();
+    const classes = [];
+    chrome.sandbox.document.documentElement.classList = {
+        add: (name) => classes.push(`+${name}`),
+        remove: (name) => classes.push(`-${name}`),
+    };
+
+    assert.equal(typeof chrome.sandbox.__configuratorSetScrollLock, "function");
+    chrome.sandbox.__configuratorSetScrollLock(true);
+    chrome.sandbox.__configuratorSetScrollLock(false);
+
+    assert.deepEqual(classes, ["+__configurator_scroll_lock", "-__configurator_scroll_lock"]);
+});
+
+test("the lock only bites when the class is present", () => {
+    // Every rule is scoped to html.__configurator_scroll_lock, so an ordinary
+    // page keeps scrolling exactly as before.
+    const text = loadChrome().style().textContent;
+    const lockRules = text.split("}").filter((rule) => rule.includes("touch-action: none") && rule.includes("scroll_lock"));
+    assert.ok(lockRules.length >= 2, "expected the lock rules");
+    for (const rule of lockRules) {
+        assert.ok(rule.includes("html.__configurator_scroll_lock"), `unscoped lock rule: ${rule.trim()}`);
+    }
+});
