@@ -438,7 +438,10 @@ class MainActivity : AppCompatActivity(), DevicePicker, FilePicker {
     private fun warnIfUsbOffForConfigurator() {
         val origin = currentOrigin ?: return
         if (policy.isUsbAllowed(origin)) return
-        if (SitePolicy.BUILT_IN.none { it.origin == origin }) return
+        // Any site, not just the built-ins: a switched-off site looks equally
+        // broken whatever its origin, and switching one off is now deliberate
+        // enough that saying so cannot be a nuisance.
+        if (!policy.isKnown(origin)) return
         Snackbar.make(binding.root, R.string.usb_off_here, Snackbar.LENGTH_LONG)
             .setAction(R.string.usb_off_enable) { enableUsbForCurrentSite() }
             .show()
