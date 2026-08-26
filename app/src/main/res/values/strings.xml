@@ -60,6 +60,8 @@ The websites this app loads are always current; the app itself is not. Update to
     <string name="update_auto_on">Update checks on — the app asks GitHub once a day</string>
     <string name="update_auto_off">Update checks off — the app no longer asks GitHub about new versions</string>
 
+    <string name="usb_attached_summary">USB device connected</string>
+    <string name="usb_attached_here">Connected: %1$s</string>
     <string name="usb_on_here">This site can use USB. It still has to ask, and you pick the device.</string>
     <string name="disable_usb_title">Stop %1$s using USB?</string>
     <string name="disable_usb_message">Configurators on this site will no longer see your hardware. Most report that as your browser being unsupported rather than as a setting, so it can look like the app is broken.

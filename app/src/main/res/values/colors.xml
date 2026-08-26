@@ -9,4 +9,6 @@
     <color name="accent">#FFFFC107</color>
     <color name="usb_on">#FF4CD964</color>
     <color name="usb_off">#FF6E7178</color>
+    <!-- USB is switched off for this site: an error state, not a neutral one. -->
+    <color name="usb_blocked">#FFE0564A</color>
 </resources>

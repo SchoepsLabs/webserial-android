@@ -127,8 +127,14 @@ class MainActivity : AppCompatActivity(), DevicePicker, FilePicker {
         hub = UsbHub(this, GrantStore(SharedPreferencesGrantPersistence(this)))
         bridge = ConfiguratorBridge(hub, this, policy, files, lifecycleScope)
 
-        hub.onDeviceAttached = { device -> bridge.notifyDeviceAttached(device) }
-        hub.onDeviceDetached = { device -> bridge.notifyDeviceDetached(device) }
+        hub.onDeviceAttached = { device ->
+            bridge.notifyDeviceAttached(device)
+            runOnUiThread { updateUsbIndicator() }
+        }
+        hub.onDeviceDetached = { device ->
+            bridge.notifyDeviceDetached(device)
+            runOnUiThread { updateUsbIndicator() }
+        }
         hub.onDfuHandoff = { device, handoffs ->
             toast(getString(R.string.dfu_detected, hub.describe(device), handoffs.first().reason.name))
         }
@@ -419,13 +425,23 @@ class MainActivity : AppCompatActivity(), DevicePicker, FilePicker {
      */
     private fun updateUsbIndicator() {
         val allowed = policy.isUsbAllowed(currentOrigin)
-        binding.usbIndicator.setImageResource(if (allowed) R.drawable.ic_usb else R.drawable.ic_usb_off)
-        binding.usbIndicator.imageTintList = ContextCompat.getColorStateList(
-            this,
-            if (allowed) R.color.usb_on else R.color.usb_off,
-        )
-        binding.usbIndicator.contentDescription =
-            getString(if (allowed) R.string.usb_on_summary else R.string.usb_off_summary)
+        val attached = runCatching { hub.devices().isNotEmpty() }.getOrDefault(false)
+
+        val icon = if (allowed) R.drawable.ic_usb else R.drawable.ic_usb_off
+        val colour = when {
+            !allowed -> R.color.usb_blocked
+            attached -> R.color.usb_on
+            else -> R.color.usb_off
+        }
+        val description = when {
+            !allowed -> R.string.usb_off_summary
+            attached -> R.string.usb_attached_summary
+            else -> R.string.usb_on_summary
+        }
+
+        binding.usbIndicator.setImageResource(icon)
+        binding.usbIndicator.imageTintList = ContextCompat.getColorStateList(this, colour)
+        binding.usbIndicator.contentDescription = getString(description)
     }
 
     /**
@@ -461,7 +477,13 @@ class MainActivity : AppCompatActivity(), DevicePicker, FilePicker {
     private fun onUsbIndicatorTapped() {
         val origin = currentOrigin ?: return
         if (policy.isUsbAllowed(origin)) {
-            Snackbar.make(binding.root, R.string.usb_on_here, Snackbar.LENGTH_LONG)
+            val devices = runCatching { hub.devices() }.getOrDefault(emptyList())
+            val message = if (devices.isEmpty()) {
+                getString(R.string.usb_on_here)
+            } else {
+                getString(R.string.usb_attached_here, devices.joinToString { hub.describe(it) })
+            }
+            Snackbar.make(binding.root, message, Snackbar.LENGTH_LONG)
                 .setAction(R.string.menu_sites) { startActivity(Intent(this, SitesActivity::class.java)) }
                 .show()
             return
