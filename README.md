@@ -48,10 +48,14 @@ tools that were never going to ship an Android app work too.
 > belong to their owners.
 
 <p>
-  <img src="docs/screenshot-browser.png" width="250" alt="A configurator running in the app">
-  <img src="docs/screenshot-stop-motors.png" width="250" alt="Betaflight's motor tab with the emergency stop button showing">
-  <img src="docs/screenshot-picker.png" width="250" alt="Native device picker">
-  <img src="docs/screenshot-diagnostics.png" width="250" alt="USB diagnostics screen">
+  <img src="docs/screenshot-menu.png" width="240" alt="The menu, listing all four configurators">
+  <img src="docs/screenshot-browser.png" width="240" alt="A configurator running in the app">
+  <img src="docs/screenshot-stop-motors.png" width="240" alt="Betaflight's motor tab with the emergency stop button showing">
+</p>
+<p>
+  <img src="docs/screenshot-sites.png" width="240" alt="Sites and USB access, with the offline preload switch">
+  <img src="docs/screenshot-picker.png" width="240" alt="Native device picker">
+  <img src="docs/screenshot-diagnostics.png" width="240" alt="USB diagnostics screen">
 </p>
 
 ## Safer than a browser tab, on purpose
