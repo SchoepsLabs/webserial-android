@@ -18,10 +18,11 @@ const CHROME_PATH = path.resolve(HERE, "../app/src/main/assets/bridge/chrome.js"
  */
 
 /** A document mock with just enough surface for the script to install itself. */
-function loadChrome({ head = true } = {}) {
+function loadChrome({ head = true, sliders = [] } = {}) {
     const source = fs.readFileSync(CHROME_PATH, "utf8");
     const appended = [];
     const listeners = new Map();
+    const posted = [];
     const byId = new Map();
 
     const container = () => ({
@@ -36,10 +37,29 @@ function loadChrome({ head = true } = {}) {
         head: head ? container() : null,
         createElement: () => ({ id: "", textContent: "" }),
         getElementById: (id) => byId.get(id) ?? null,
-        addEventListener: (type, handler) => listeners.set(type, handler),
+        // The edge-slider report walks these looking for ones near a screen edge.
+        querySelectorAll: () => sliders,
+        addEventListener: (type, handler) => {
+            if (!listeners.has(type)) listeners.set(type, []);
+            listeners.get(type).push(handler);
+        },
     };
 
-    const sandbox = { document, addEventListener() {}, WeakMap };
+    const channel = { postMessage: (text) => posted.push(JSON.parse(text)) };
+    const timers = [];
+    const sandbox = {
+        document,
+        addEventListener() {},
+        WeakMap,
+        JSON,
+        Math,
+        innerWidth: 400,
+        innerHeight: 800,
+        // Run frame callbacks straight away so a test sees the report it triggered.
+        requestAnimationFrame: (fn) => fn(),
+        setTimeout: (fn) => { timers.push(fn); return timers.length; },
+        AndroidBrowserChrome: channel,
+    };
     sandbox.globalThis = sandbox;
     vm.createContext(sandbox);
     vm.runInContext(source, sandbox);
@@ -48,7 +68,9 @@ function loadChrome({ head = true } = {}) {
         sandbox,
         appended,
         style: () => appended.find((node) => node.id === "__configurator_slider_css"),
-        fire: (type) => listeners.get(type)?.(),
+        fire: (type, event) => (listeners.get(type) ?? []).forEach((handler) => handler(event)),
+        runTimers: () => timers.splice(0).forEach((fn) => fn()),
+        posted,
     };
 }
 
@@ -154,4 +176,115 @@ test("the :has() rules stand alone so an old WebView cannot drop the plain ones"
             assert.ok(!line.includes(".input-range"), `:has() shares a rule: ${line}`);
         }
     }
+});
+
+/** A touch event shaped the way the reveal handler reads it. */
+function touch(y, target = { closest: () => null }) {
+    return { touches: [{ clientY: y }], target };
+}
+
+test("a downward drag that scrolls nothing brings the address bar back", () => {
+    /*
+     * expand used to be posted only from a scroll event, so on a page that does
+     * not scroll — or once you are already at the top — the bar could never come
+     * back and the app had to be killed. Dragging down from the top edge just
+     * pulls the phone's notification shade instead.
+     */
+    const chrome = loadChrome();
+    chrome.fire("touchstart", touch(300));
+    chrome.fire("touchmove", touch(400));
+
+    assert.deepEqual(chrome.posted, [{ chrome: "expand" }]);
+});
+
+test("a drag shorter than the threshold is not treated as a reveal", () => {
+    const chrome = loadChrome();
+    chrome.fire("touchstart", touch(300));
+    chrome.fire("touchmove", touch(320));
+
+    assert.deepEqual(chrome.posted, []);
+});
+
+test("a drag that does scroll is left to the scroll handler", () => {
+    // Otherwise every downward scroll would fight the collapse logic.
+    const chrome = loadChrome();
+    chrome.fire("touchstart", touch(300));
+    chrome.fire("scroll", { target: { scrollTop: 500 } });
+    chrome.posted.length = 0;
+    chrome.fire("touchmove", touch(400));
+
+    assert.deepEqual(chrome.posted, []);
+});
+
+test("dragging a slider downwards does not pop the toolbar open", () => {
+    // A motor slider is dragged down constantly; the bar must stay put.
+    const chrome = loadChrome();
+    const onSlider = { closest: (selector) => (selector.includes("slider") ? {} : null) };
+    chrome.fire("touchstart", touch(300, onSlider));
+    chrome.fire("touchmove", touch(500, onSlider));
+
+    assert.deepEqual(chrome.posted, []);
+});
+
+test("one reveal per gesture, not one per touchmove", () => {
+    const chrome = loadChrome();
+    chrome.fire("touchstart", touch(300));
+    chrome.fire("touchmove", touch(400));
+    chrome.fire("touchmove", touch(500));
+    chrome.fire("touchmove", touch(600));
+
+    assert.equal(chrome.posted.length, 1);
+});
+
+/** A slider element positioned by its viewport rectangle. */
+function sliderAt(left, top, right, bottom) {
+    return { getBoundingClientRect: () => ({ left, top, right, bottom, width: right - left, height: bottom - top }) };
+}
+
+test("a slider hugging the left edge is reported for gesture exclusion", () => {
+    /*
+     * ESC Configurator's round knobs sit close to the left edge, so a drag on
+     * one was also an edge swipe and Android took it as Back — the page
+     * navigated away mid-adjustment. The app excludes those bands from the
+     * system gesture, which needs to know where they are.
+     */
+    const chrome = loadChrome({ sliders: [sliderAt(4, 200, 60, 240)] });
+    chrome.runTimers();
+
+    const report = chrome.posted.find((m) => m.chrome === "exclude");
+    assert.ok(report, "nothing was reported");
+    // Widened to the edge itself, so the whole gesture strip is covered.
+    assert.deepEqual(report.rects, [[0, 200, 60, 240]]);
+});
+
+test("a slider in the middle of the page is left alone", () => {
+    // Excluding it would spend the system's 200dp-per-edge budget for nothing.
+    const chrome = loadChrome({ sliders: [sliderAt(150, 200, 260, 240)] });
+    chrome.runTimers();
+
+    assert.deepEqual(chrome.posted.find((m) => m.chrome === "exclude")?.rects, []);
+});
+
+test("a slider scrolled off screen is not reported", () => {
+    const chrome = loadChrome({ sliders: [sliderAt(4, -300, 60, -260)] });
+    chrome.runTimers();
+
+    assert.deepEqual(chrome.posted.find((m) => m.chrome === "exclude")?.rects, []);
+});
+
+test("a right-edge slider is widened to the right edge", () => {
+    const chrome = loadChrome({ sliders: [sliderAt(340, 100, 396, 140)] });
+    chrome.runTimers();
+
+    assert.deepEqual(chrome.posted.find((m) => m.chrome === "exclude").rects, [[340, 100, 400, 140]]);
+});
+
+test("an unchanged set of sliders is not re-sent on every scroll", () => {
+    // Scroll fires constantly; re-posting identical rectangles would be noise.
+    const chrome = loadChrome({ sliders: [sliderAt(4, 200, 60, 240)] });
+    chrome.runTimers();
+    chrome.fire("scroll", { target: { scrollTop: 10 } });
+    chrome.fire("scroll", { target: { scrollTop: 20 } });
+
+    assert.equal(chrome.posted.filter((m) => m.chrome === "exclude").length, 1);
 });

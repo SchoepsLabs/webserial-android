@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.hardware.usb.UsbDevice
 import android.net.Uri
+import android.graphics.Rect
 import android.os.Build
 import android.os.Bundle
 import android.view.MenuItem
@@ -32,6 +33,8 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.webkit.WebViewCompat
+import org.json.JSONArray
+import org.json.JSONObject
 import androidx.webkit.WebViewFeature
 import com.google.android.material.snackbar.Snackbar
 import com.trustedconfigurator.browser.bridge.BridgeInstaller
@@ -192,17 +195,59 @@ class MainActivity : AppCompatActivity(), DevicePicker, FilePicker {
             CHROME_CHANNEL,
             anyOrigin,
         ) { _, message, _, _, _ ->
-            if (settings.fullScreen || binding.addressBar.hasFocus()) return@addWebMessageListener
-            when {
-                message.data?.contains("collapse") == true -> setChromeExpanded(false)
-                message.data?.contains("expand") == true -> setChromeExpanded(true)
-            }
+            onChromeMessage(message.data)
         }
         WebViewCompat.addDocumentStartJavaScript(
             binding.webView,
             assets.open(CHROME_ASSET).bufferedReader().use { it.readText() },
             anyOrigin,
         )
+    }
+
+    /**
+     * Handles one message from the page-side chrome script.
+     *
+     * Parsed rather than substring-matched: it now carries gesture-exclusion
+     * rectangles as well as show/hide, and "exclude" contains neither keyword.
+     */
+    private fun onChromeMessage(raw: String?) {
+        val json = runCatching { JSONObject(raw ?: return) }.getOrNull() ?: return
+        when (json.optString("chrome")) {
+            "exclude" -> applyGestureExclusions(json.optJSONArray("rects"))
+            "collapse" -> if (!settings.fullScreen && !binding.addressBar.hasFocus()) setChromeExpanded(false)
+            "expand" -> if (!settings.fullScreen && !binding.addressBar.hasFocus()) setChromeExpanded(true)
+        }
+    }
+
+    /**
+     * Tells Android not to read a drag on an edge-hugging slider as a Back swipe.
+     *
+     * ESC Configurator's knobs sit close to the left edge, so adjusting one used
+     * to navigate the page away instead. The page reports where those sliders
+     * are in CSS pixels; a WebView lays out one CSS pixel per density-independent
+     * pixel, so the only conversion needed is the display density.
+     *
+     * Android ignores exclusions beyond 200dp per edge, which is why the page
+     * only ever sends the handful that are on screen.
+     */
+    private fun applyGestureExclusions(rects: JSONArray?) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
+        val density = resources.displayMetrics.density
+        val exclusions = buildList {
+            for (index in 0 until (rects?.length() ?: 0)) {
+                val r = rects?.optJSONArray(index) ?: continue
+                if (r.length() < 4) continue
+                add(
+                    Rect(
+                        (r.optDouble(0) * density).toInt(),
+                        (r.optDouble(1) * density).toInt(),
+                        (r.optDouble(2) * density).toInt(),
+                        (r.optDouble(3) * density).toInt(),
+                    ),
+                )
+            }
+        }
+        binding.webView.systemGestureExclusionRects = exclusions
     }
 
     private fun setChromeExpanded(expanded: Boolean) {

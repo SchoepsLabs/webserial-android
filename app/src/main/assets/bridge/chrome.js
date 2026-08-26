@@ -143,6 +143,8 @@
     }
 
     function onScroll(event) {
+        gestureScrolled = true;
+        scheduleEdgeReport();
         var target = event.target;
         var current = offsetOf(target);
         var previous = previousOffsetOf(target, current);
@@ -158,6 +160,105 @@
             post({ chrome: "expand" });
         }
     }
+
+    /*
+     * Bringing the bar back when nothing scrolls.
+     *
+     * expand is only ever posted from a scroll event. On a page that does not
+     * scroll, or once the user is already at the top, no scroll event ever
+     * arrives and the bar can never come back — the app has to be killed.
+     * Dragging down from the top edge only pulls the phone's notification shade.
+     *
+     * So a downward drag that scrolls nothing is taken to mean "show me the
+     * bar". Gestures starting on a slider are ignored, or dragging a motor
+     * slider downwards would pop the toolbar open every time.
+     */
+    /*
+     * Keeping Android's back gesture off the sliders that sit near a screen edge.
+     *
+     * ESC Configurator's round slider knobs reach close to the left edge, so a
+     * drag on one is also an edge swipe: the system takes it as Back and the
+     * page navigates away mid-adjustment. Android's answer is
+     * View.setSystemGestureExclusionRects, so the app is told where the sliders
+     * are and excludes exactly those bands.
+     *
+     * Only what is on screen and actually near an edge is reported — the system
+     * caps exclusions at 200dp per edge, so asking for the whole page would get
+     * most of it thrown away.
+     */
+    var EDGE_BAND = 40;
+    var MAX_RECTS = 10;
+    var lastExclusions = "";
+
+    function reportEdgeSliders() {
+        var width = global.innerWidth || 0;
+        var height = global.innerHeight || 0;
+        var found = [];
+        var nodes = global.document.querySelectorAll(SLIDER_SELECTOR);
+        for (var i = 0; i < nodes.length && found.length < MAX_RECTS; i++) {
+            var r = nodes[i].getBoundingClientRect();
+            if (!r.width || !r.height) continue;
+            if (r.bottom < 0 || r.top > height) continue;
+            var nearLeft = r.left <= EDGE_BAND;
+            var nearRight = r.right >= width - EDGE_BAND;
+            if (!nearLeft && !nearRight) continue;
+            found.push([
+                Math.max(0, Math.round(nearLeft ? 0 : r.left)),
+                Math.max(0, Math.round(r.top)),
+                Math.min(width, Math.round(nearRight ? width : r.right)),
+                Math.min(height, Math.round(r.bottom)),
+            ]);
+        }
+        var encoded = JSON.stringify(found);
+        if (encoded === lastExclusions) return;
+        lastExclusions = encoded;
+        post({ chrome: "exclude", rects: found });
+    }
+
+    var reportPending = false;
+    function scheduleEdgeReport() {
+        if (reportPending) return;
+        reportPending = true;
+        (global.requestAnimationFrame || function (fn) { global.setTimeout(fn, 16); })(function () {
+            reportPending = false;
+            try { reportEdgeSliders(); } catch (e) { /* a page mid-teardown */ }
+        });
+    }
+
+    var REVEAL_DISTANCE = 48;
+    var SLIDER_SELECTOR = '[role="slider"], .input-range, .noUi-target, .MuiSlider-root, .rc-slider, input[type="range"]';
+    var gestureStartY = null;
+    var gestureScrolled = false;
+    var gestureRevealed = false;
+
+    function startsOnSlider(target) {
+        return !!(target && target.closest && target.closest(SLIDER_SELECTOR));
+    }
+
+    function onTouchStart(event) {
+        var touch = event.touches && event.touches[0];
+        gestureStartY = touch && !startsOnSlider(event.target) ? touch.clientY : null;
+        gestureScrolled = false;
+        gestureRevealed = false;
+    }
+
+    function onTouchMove(event) {
+        if (gestureStartY === null || gestureScrolled || gestureRevealed) {
+            return;
+        }
+        var touch = event.touches && event.touches[0];
+        if (touch && touch.clientY - gestureStartY > REVEAL_DISTANCE) {
+            gestureRevealed = true;
+            post({ chrome: "expand" });
+        }
+    }
+
+    global.addEventListener("resize", scheduleEdgeReport, { passive: true });
+    global.document.addEventListener("DOMContentLoaded", scheduleEdgeReport);
+    global.setTimeout(scheduleEdgeReport, 1500);
+
+    global.document.addEventListener("touchstart", onTouchStart, { passive: true, capture: true });
+    global.document.addEventListener("touchmove", onTouchMove, { passive: true, capture: true });
 
     // Capture phase: scroll does not bubble, so this is the only way to see a
     // scroll that happens inside a nested container.
