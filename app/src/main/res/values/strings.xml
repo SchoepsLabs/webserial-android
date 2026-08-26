@@ -1,5 +1,4 @@
 <resources>
-    <string name="app_name">WebSerial Browser</string>
     <string name="diagnostics_title">USB diagnostics</string>
     <string name="sites_title">Sites &amp; USB access</string>
 
