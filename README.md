@@ -133,11 +133,15 @@ warning, and each origin only ever sees the devices you picked there. See
 [Sites and USB access](#sites-and-usb-access).
 
 Betaflight also publishes [its own Capacitor Android APK](https://downloads.betaflight.com/).
-It is official and supported, and it works offline — but its Capacitor config is
-`"webDir": "src/dist"`, so it **bundles a frozen build**: a new Betaflight release
-means downloading a new APK. This browser loads the live site, so the configurator
-is whatever is current the moment you open it, and the only thing you ever update
-is the bridge underneath.
+It is official and supported — but its Capacitor config is `"webDir": "src/dist"`,
+so it **bundles a frozen build**: a new Betaflight release means downloading a new
+APK. This browser loads the live site, so the configurator is whatever is current
+the moment you open it, and the only thing you ever update is the bridge underneath.
+
+Loading live does not mean needing a connection. Betaflight and ESC Configurator
+are both progressive web apps and their service workers run here, so once a site
+has been opened online it keeps working offline — measured, see
+[Working offline](#working-offline).
 
 ## Should work, untested
 
