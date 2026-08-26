@@ -173,12 +173,23 @@ test("native range inputs keep the browser's own touch handling", () => {
 });
 
 test("the :has() rules stand alone so an old WebView cannot drop the plain ones", () => {
-    // An unknown selector invalidates the whole rule it appears in, so sharing
-    // one would take the react-input-range selectors down with it.
+    /*
+     * An unknown selector invalidates the whole rule it appears in, and :has()
+     * only landed in Chrome 105. A rule may therefore be all-:has() — it simply
+     * does nothing on an older WebView — but it must never mix the two, or the
+     * plain react-input-range selectors would go down with it.
+     */
     const text = loadChrome().style().textContent;
     for (const line of text.split("\n")) {
-        if (line.includes(":has(")) {
-            assert.ok(!line.includes(".input-range"), `:has() shares a rule: ${line}`);
+        const selectors = line.split("{")[0];
+        if (!selectors.includes(":has(")) continue;
+        for (const part of selectors.split(/,(?![^()]*\))/)) {
+            const selector = part.trim();
+            if (!selector) continue;
+            assert.ok(
+                selector.includes(":has("),
+                `a plain selector shares a rule with :has(): ${selector}`,
+            );
         }
     }
 });
@@ -339,4 +350,34 @@ test("a cancel outside a slider is left alone", () => {
     chrome.fire("pointercancel", event);
 
     assert.equal(dispatched.length, 0);
+});
+
+test("the label beside a slider is covered too, not just the widget", () => {
+    /*
+     * ESC Configurator renders the name and value outside .input-range — a
+     * sibling inside the wrapping <label> — so suppressing selection on the
+     * widget alone left "Master speed" and "Motor 1" grabbable, and a touch
+     * starting there still became a selection instead of a drag. Betaflight
+     * puts its motor labels in the <li> around each slider.
+     */
+    const text = loadChrome().style().textContent;
+    assert.match(text, /label:has\(\.input-range\)/);
+    assert.match(text, /label:has\(\[role="slider"\]\)/);
+    assert.match(text, /li:has\(\[role="slider"\]\)/);
+});
+
+test("the row rules are still anchored on containing a slider", () => {
+    // A bare label or li rule would strip selection from half the page.
+    const text = loadChrome().style().textContent;
+    for (const line of text.split("\n")) {
+        const selectors = line.split("{")[0];
+        for (const part of selectors.split(",")) {
+            const selector = part.trim();
+            if (!selector || selector.startsWith("-") || selector.includes(":")) continue;
+            assert.ok(
+                !["label", "li", "div", "span", "p"].includes(selector),
+                `unanchored container selector: ${selector}`,
+            );
+        }
+    }
 });

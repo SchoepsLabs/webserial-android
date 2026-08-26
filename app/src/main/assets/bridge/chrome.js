@@ -81,6 +81,27 @@
      * selector invalidates the whole rule it appears in — sharing a rule with
      * the plain selectors above would take those down on an older WebView.
      */
+    /*
+     * The label sitting next to a slider counts as part of the slider.
+     *
+     * ESC Configurator renders the name and value outside .input-range — a
+     * sibling inside the wrapping <label> — so suppressing selection on the
+     * widget alone left "Master speed" and "Motor 1" grabbable, and a touch
+     * that starts there still becomes a selection instead of a drag. Betaflight
+     * puts its motor labels in the <li> around each slider for the same reason.
+     *
+     * Anchored on containing a slider, so this can never reach ordinary prose.
+     */
+    var SLIDER_ROW_CSS = [
+        "label:has(.input-range), label:has([role=\"slider\"]),",
+        "li:has([role=\"slider\"]), .number:has(.input-range),",
+        "li:has(.input-range) {",
+        "  -webkit-user-select: none;",
+        "  user-select: none;",
+        "  -webkit-touch-callout: none;",
+        "}",
+    ].join("\n");
+
     var RADIX_SLIDER_CSS = [
         "[data-orientation=\"horizontal\"]:has([role=\"slider\"]) { touch-action: pan-y; }",
         "[data-orientation=\"vertical\"]:has([role=\"slider\"]) { touch-action: none; }",
@@ -100,7 +121,7 @@
         }
         var style = doc.createElement("style");
         style.id = "__configurator_slider_css";
-        style.textContent = SLIDER_CSS + "\n" + RADIX_SLIDER_CSS;
+        style.textContent = [SLIDER_CSS, RADIX_SLIDER_CSS, SLIDER_ROW_CSS].join("\n");
         root.appendChild(style);
     }
 
