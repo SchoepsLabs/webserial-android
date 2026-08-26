@@ -186,6 +186,59 @@
      * caps exclusions at 200dp per edge, so asking for the whole page would get
      * most of it thrown away.
      */
+    /*
+     * Ending a slider drag the browser interrupted.
+     *
+     * Both slider libraries in use here end a drag only on the *normal* end
+     * event, and neither listens for the cancel the browser fires when it takes
+     * a gesture over for a pan:
+     *
+     *   react-input-range (ESC Configurator) adds document touchmove/touchend on
+     *   touchstart and removes them on touchend only, so a cancelled drag leaves
+     *   that listener attached for good.
+     *
+     *   reka-ui (Betaflight motors) pairs setPointerCapture on pointerdown with
+     *   releasePointerCapture on pointerup only, so a cancelled drag leaves the
+     *   slider believing it is still being dragged.
+     *
+     * Either way the slider keeps following later drags, which is why moving one
+     * motor moved another. Synthesising the end event they are waiting for
+     * restores the invariant. Scoped to slider widgets so no other page code
+     * sees a duplicate end.
+     */
+    function endInterruptedDrag(event) {
+        var target = event.target;
+        if (!target || !target.closest || !target.closest(SLIDER_SELECTOR)) {
+            return;
+        }
+        try {
+            if (event.type === "pointercancel" && global.PointerEvent) {
+                target.dispatchEvent(new global.PointerEvent("pointerup", {
+                    bubbles: true,
+                    cancelable: false,
+                    pointerId: event.pointerId,
+                    pointerType: event.pointerType,
+                    isPrimary: event.isPrimary,
+                    clientX: event.clientX,
+                    clientY: event.clientY,
+                }));
+            } else if (event.type === "touchcancel" && global.TouchEvent) {
+                target.dispatchEvent(new global.TouchEvent("touchend", {
+                    bubbles: true,
+                    cancelable: false,
+                    touches: [],
+                    targetTouches: [],
+                    changedTouches: [],
+                }));
+            }
+        } catch (e) {
+            /* a browser that will not let us build one; nothing else to try */
+        }
+    }
+
+    global.document.addEventListener("pointercancel", endInterruptedDrag, true);
+    global.document.addEventListener("touchcancel", endInterruptedDrag, true);
+
     var EDGE_BAND = 40;
     var MAX_RECTS = 10;
     var lastExclusions = "";

@@ -47,7 +47,12 @@ function loadChrome({ head = true, sliders = [] } = {}) {
 
     const channel = { postMessage: (text) => posted.push(JSON.parse(text)) };
     const timers = [];
+    class FakeEvent {
+        constructor(type, init = {}) { Object.assign(this, init); this.type = type; }
+    }
     const sandbox = {
+        PointerEvent: FakeEvent,
+        TouchEvent: FakeEvent,
         document,
         addEventListener() {},
         WeakMap,
@@ -287,4 +292,51 @@ test("an unchanged set of sliders is not re-sent on every scroll", () => {
     chrome.fire("scroll", { target: { scrollTop: 20 } });
 
     assert.equal(chrome.posted.filter((m) => m.chrome === "exclude").length, 1);
+});
+
+/** An event whose target sits inside (or outside) a slider and records dispatches. */
+function cancelEvent(type, insideSlider, extra = {}) {
+    const dispatched = [];
+    const target = {
+        closest: (selector) => (insideSlider && selector.includes("slider") ? {} : null),
+        dispatchEvent: (event) => dispatched.push(event),
+    };
+    return { event: { type, target, ...extra }, dispatched };
+}
+
+test("a cancelled pointer drag is ended so the slider stops following later drags", () => {
+    /*
+     * reka-ui pairs setPointerCapture on pointerdown with releasePointerCapture
+     * on pointerup only, and never listens for pointercancel. When the browser
+     * cancels a gesture to pan, the slider keeps believing it is being dragged
+     * and follows every later drag — move one motor, another moves. The end
+     * event it is waiting for has to be supplied.
+     */
+    const { event, dispatched } = cancelEvent("pointercancel", true, { pointerId: 7, pointerType: "touch" });
+    const chrome = loadChrome();
+    chrome.fire("pointercancel", event);
+
+    assert.equal(dispatched.length, 1);
+    assert.equal(dispatched[0].type, "pointerup");
+    assert.equal(dispatched[0].pointerId, 7, "the synthesised end must match the pointer that was cancelled");
+});
+
+test("a cancelled touch drag is ended too, which is ESC Configurator's case", () => {
+    // react-input-range removes its document touchmove listener on touchend only.
+    const { event, dispatched } = cancelEvent("touchcancel", true);
+    const chrome = loadChrome();
+    chrome.fire("touchcancel", event);
+
+    assert.equal(dispatched.length, 1);
+    assert.equal(dispatched[0].type, "touchend");
+    assert.equal(dispatched[0].touches.length, 0, "the synthesised end must report no remaining touches");
+});
+
+test("a cancel outside a slider is left alone", () => {
+    // Other page code may handle cancel properly; a duplicate end would be a bug.
+    const { event, dispatched } = cancelEvent("pointercancel", false, { pointerId: 1 });
+    const chrome = loadChrome();
+    chrome.fire("pointercancel", event);
+
+    assert.equal(dispatched.length, 0);
 });
