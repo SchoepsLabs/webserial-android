@@ -111,10 +111,17 @@ The app collects nothing and has no analytics or accounts. It declares only
 because file access goes through Android's own save/open dialogs, and USB access
 through Android's own per-device permission prompt.
 
-It makes exactly one network request of its own: once a day it asks
-`api.github.com` whether a newer release exists, sending nothing but the request
-itself. Turn it off under **Check for updates** and it never calls out again.
-Pages you visit reach the network on their own behalf, as in any browser.
+It makes two kinds of request of its own, both switchable off in the menu:
+
+- **Check for updates** asks `api.github.com` once a day whether a newer release
+  exists, sending nothing but the request itself.
+- **Keep sites available offline** visits the four built-in configurators once a
+  week so their own service workers cache them, which is what makes them work at
+  a field with no signal. Unmetered connections only, so it never spends mobile
+  data, and nothing is sent — it is an ordinary page load.
+
+Turn both off and the app never calls out on its own. Pages you visit reach the
+network on their own behalf, as in any browser.
 
 ## Bundled sites
 

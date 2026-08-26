@@ -59,7 +59,12 @@ The websites this app loads are always current; the app itself is not. Update to
     <string name="update_failed">Could not reach GitHub to check for updates</string>
     <string name="update_check_toggle">Check for updates automatically</string>
     <string name="update_auto_on">Update checks on — the app asks GitHub once a day</string>
-    <string name="update_auto_off">Update checks off — the app makes no network requests of its own</string>
+    <string name="update_auto_off">Update checks off — the app no longer asks GitHub about new versions</string>
+
+    <string name="offline_toggle">Keep sites available offline</string>
+    <string name="offline_on">Preloading the configurators over Wi-Fi</string>
+    <string name="offline_off">Offline preload off. Sites still cache themselves once you open them.</string>
+    <string name="offline_done">%1$d sites ready to use without a connection</string>
 
     <string name="unsupported_webview_title">This WebView cannot host the USB bridge</string>
     <string name="unsupported_webview_message">Android System WebView is missing: %1$s.\n\nUpdate Android System WebView (or Chrome) from the Play Store, then reopen this app. Pages will still load, but USB devices will not be available.</string>

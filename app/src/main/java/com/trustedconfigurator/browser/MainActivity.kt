@@ -147,6 +147,14 @@ class MainActivity : AppCompatActivity(), DevicePicker, FilePicker {
 
         checkForUpdates(userInitiated = false)
 
+        // After the visible page has been asked for, so the preload never
+        // competes with what the user is actually waiting on.
+        binding.webView.postDelayed({
+            if (!isFinishing && !isDestroyed) {
+                OfflinePrewarm(this, settings).run(policy.sites().filter { it.builtIn }.map { it.origin })
+            }
+        }, PREWARM_DELAY_MS)
+
         onBackPressedDispatcher.addCallback(this) {
             when {
                 settings.fullScreen -> applyFullScreen(false)
@@ -290,6 +298,10 @@ class MainActivity : AppCompatActivity(), DevicePicker, FilePicker {
             isCheckable = true
             isChecked = settings.updateCheckEnabled
         }
+        menu.add(GROUP_ACTIONS, ID_OFFLINE, 107, R.string.offline_toggle).apply {
+            isCheckable = true
+            isChecked = settings.offlinePrewarmEnabled
+        }
 
         popup.setOnMenuItemClickListener { item -> onMenuItem(item) }
         popup.show()
@@ -303,6 +315,21 @@ class MainActivity : AppCompatActivity(), DevicePicker, FilePicker {
         return when (item.itemId) {
             ID_RELOAD -> {
                 binding.webView.reload(); true
+            }
+            ID_OFFLINE -> {
+                settings.offlinePrewarmEnabled = !settings.offlinePrewarmEnabled
+                if (settings.offlinePrewarmEnabled) {
+                    // Turning it on is a request to do it, not just to allow it
+                    // later, so the weekly gate is cleared for this one run.
+                    settings.lastPrewarm = 0L
+                    toast(getString(R.string.offline_on))
+                    OfflinePrewarm(this, settings).run(policy.sites().filter { it.builtIn }.map { it.origin }) { cached ->
+                        toast(getString(R.string.offline_done, cached))
+                    }
+                } else {
+                    toast(getString(R.string.offline_off))
+                }
+                true
             }
             ID_DESKTOP -> {
                 settings.desktopMode = !settings.desktopMode
@@ -447,10 +474,13 @@ class MainActivity : AppCompatActivity(), DevicePicker, FilePicker {
     }
 
     /**
-     * Desktop mode is on by default: the configurators lay out for a wide window
-     * and their mobile layout hides most of the UI. Betaflight decides it is
-     * "native Android" from Capacitor, never the user agent, so overriding the
-     * UA here does not change which transport it picks.
+     * Desktop mode is off by default and turned on from the menu. The
+     * configurators do lay out for a wide window, but forcing that on a phone
+     * makes everything small before the user has asked for it.
+     *
+     * Betaflight decides it is "native Android" from Capacitor, never the user
+     * agent, so overriding the UA here does not change which transport it
+     * picks.
      */
     private fun applyDesktopMode() {
         val webSettings = binding.webView.settings
@@ -752,7 +782,9 @@ class MainActivity : AppCompatActivity(), DevicePicker, FilePicker {
         const val ID_DIAGNOSTICS = 1004
         const val ID_UPDATES = 1005
         const val ID_AUTO_UPDATES = 1006
+        const val ID_OFFLINE = 1007
         const val UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000L
+        const val PREWARM_DELAY_MS = 8_000L
 
         /** Chrome on desktop Linux; keeps the configurators in their wide layout. */
         const val DESKTOP_USER_AGENT =

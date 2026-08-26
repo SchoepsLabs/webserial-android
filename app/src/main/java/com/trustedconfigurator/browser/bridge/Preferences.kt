@@ -93,8 +93,27 @@ class BrowserSettings(context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     var desktopMode: Boolean
-        get() = prefs.getBoolean(KEY_DESKTOP, true)
+        // Off by default: the phone layout is what a phone should get, and the
+        // desktop one is a deliberate choice from the menu. The setting sticks
+        // once it is made either way.
+        get() = prefs.getBoolean(KEY_DESKTOP, false)
         set(value) = prefs.edit().putBoolean(KEY_DESKTOP, value).apply()
+
+    /**
+     * Whether the built-in configurators are visited once so they work offline.
+     *
+     * On by default: a phone taken to a flying field has no signal, and a
+     * configurator that was never opened at home is useless there. It only ever
+     * runs on an unmetered connection, so it costs no mobile data.
+     */
+    var offlinePrewarmEnabled: Boolean
+        get() = prefs.getBoolean(KEY_PREWARM, true)
+        set(value) = prefs.edit().putBoolean(KEY_PREWARM, value).apply()
+
+    /** When the sites were last visited for their offline cache. */
+    var lastPrewarm: Long
+        get() = prefs.getLong(KEY_PREWARM_AT, 0L)
+        set(value) = prefs.edit().putLong(KEY_PREWARM_AT, value).apply()
 
     var fullScreen: Boolean
         get() = prefs.getBoolean(KEY_FULLSCREEN, false)
@@ -121,6 +140,8 @@ class BrowserSettings(context: Context) {
     private companion object {
         const val PREFS_NAME = "browser_settings"
         const val KEY_DESKTOP = "desktop_mode"
+        const val KEY_PREWARM = "offline_prewarm"
+        const val KEY_PREWARM_AT = "offline_prewarm_at"
         const val KEY_FULLSCREEN = "full_screen"
         const val KEY_LAST_URL = "last_url"
         const val KEY_UPDATE_CHECK = "update_check"
