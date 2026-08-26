@@ -4,7 +4,10 @@
 [![release](https://img.shields.io/github/v/release/SchoepsLabs/webserial-android)](https://github.com/SchoepsLabs/webserial-android/releases/latest)
 [![licence](https://img.shields.io/badge/licence-MIT-blue)](LICENSE)
 
-**Web Serial and WebUSB for Android — one USB bridge for every hardware web app.**
+**Every FPV tool you use, in your pocket — and they work at the field with no
+signal.**
+
+Web Serial and WebUSB for Android: one USB bridge for every hardware web app.
 
 The Android **WebView** has neither **Web Serial** nor **WebUSB**. This is a
 browser that implements both on top of the Android USB Host API and hands them
