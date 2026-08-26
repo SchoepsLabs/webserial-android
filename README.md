@@ -485,6 +485,59 @@ The track computes `touch-action: auto` and is still governed, which confirms th
 intersection the rule relies on: `none` on the slider root covers the track and thumb inside
 it.
 
+### Working offline
+
+Both configurators are progressive web apps, and a WebView runs their service
+workers, so their own caching applies here — no offline mode had to be built.
+Measured by cutting the network at the devtools protocol and doing a full reload
+on `esc-configurator.com`:
+
+```
+navigator.onLine  false
+title             ESC Configurator - for Bluejay, BLHeli_S and AM32
+rendered          port selection, baud rates, Connect, language list
+```
+
+The first visit has to be online to populate that cache, and it is the site's
+cache, not the app's — clearing site data clears it.
+
+### Gestures the system used to steal
+
+Two problems came from the phone rather than the page, both measured on device.
+
+The address bar could vanish for good. `expand` was only ever posted from a
+scroll event, so on a page that does not scroll, or once already at the top,
+nothing could bring it back. A downward drag that scrolls nothing now reveals it:
+collapsed, confirmed gone from the view hierarchy, then dragged down with
+`scrollY` pinned at 0 and it returned to exactly its original bounds.
+
+ESC Configurator's knobs sit close to the left edge, so a drag on one was also an
+Android back swipe and the page navigated away mid-adjustment. The page reports
+edge-hugging sliders and the app excludes them. A test slider at CSS
+`(0,300)-(120,340)` produced, in the window manager:
+
+```
+mSystemGestureExclusion=SkRegion((0,1195,360,1315))
+system_gesture_exclusion_limit_dp=200
+```
+
+Exact at density 3, offset by the status bar and app bar above the WebView. The
+200dp cap is why only on-screen sliders are ever reported.
+
+### Drags the browser interrupts
+
+Moving one motor slider used to move another, in both configurators. Neither
+slider library ends a drag when the browser cancels the gesture to pan:
+`react-input-range` adds document `touchmove`/`touchend` on touchstart and
+removes them on `touchend` only; `reka-ui` pairs `setPointerCapture` with
+`releasePointerCapture` on `pointerup` only. Neither listens for the cancel, so
+an interrupted drag never ends and that slider follows every later drag.
+
+The app supplies the end event each library waits for. In the WebView, a
+`pointercancel` on a slider now produces a `pointerup` carrying the same pointer
+id, a `touchcancel` produces a `touchend`, and a cancel outside a slider is left
+untouched.
+
 ### DFU re-enumeration, on hardware
 
 The board was sent to its bootloader with the CLI `bl` command. The serial side closed
