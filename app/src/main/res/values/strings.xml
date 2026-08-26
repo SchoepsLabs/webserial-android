@@ -72,9 +72,12 @@ You can switch it back on here at any time.</string>
     <string name="usb_off_here">USB is switched off for this site, so it cannot see your hardware</string>
     <string name="usb_off_enable">Turn on</string>
 
-    <string name="scroll_lock_toggle">Lock scrolling</string>
-    <string name="scroll_lock_on">Scrolling locked. Sliders still work — the page will not move under them.</string>
-    <string name="scroll_lock_off">Scrolling unlocked</string>
+    <string name="locked_for_motors">Motor control is on — scrolling and the back swipe are locked so the page cannot move under your finger</string>
+    <string name="locked_unlock">Unlock</string>
+    <string name="locked_back_blocked">Page is locked — unlock it from the menu to go back</string>
+    <string name="scroll_lock_toggle">Lock page (motor test)</string>
+    <string name="scroll_lock_on">Page locked. Scrolling and the back swipe are off; sliders still work.</string>
+    <string name="scroll_lock_off">Page unlocked</string>
     <string name="offline_summary">Visits these sites over Wi-Fi so they still work at a field with no signal</string>
     <string name="offline_toggle">Keep sites available offline</string>
     <string name="offline_on">Preloading the configurators over Wi-Fi</string>

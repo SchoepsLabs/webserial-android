@@ -81,7 +81,9 @@ class MainActivity : AppCompatActivity(), DevicePicker, FilePicker {
     private lateinit var files: FileBridge
 
     /** Session-only: see applyScrollLock. */
-    private var scrollLocked = false
+    private var pageLocked = false
+    /** True when the lock was put on by the motor detection, not by the user. */
+    private var lockAutoEngaged = false
 
     private var currentOrigin: String? = null
     private var chromeExpanded = true
@@ -168,6 +170,13 @@ class MainActivity : AppCompatActivity(), DevicePicker, FilePicker {
 
         onBackPressedDispatcher.addCallback(this) {
             when {
+                // Swallowed while the page is locked. On ESC Configurator the
+                // sliders reach the screen edge, so a drag there is also an edge
+                // swipe: Android reads it as Back and the page navigates away
+                // mid-adjustment, with the motors still spinning. Gesture
+                // exclusion alone cannot cover it — Android caps that at 200dp
+                // per edge — so the gesture is consumed instead.
+                pageLocked -> toast(getString(R.string.locked_back_blocked))
                 settings.fullScreen -> applyFullScreen(false)
                 binding.webView.canGoBack() -> binding.webView.goBack()
                 else -> finish()
@@ -233,6 +242,7 @@ class MainActivity : AppCompatActivity(), DevicePicker, FilePicker {
         val json = runCatching { JSONObject(raw ?: return) }.getOrNull() ?: return
         when (json.optString("chrome")) {
             "exclude" -> applyGestureExclusions(json.optJSONArray("rects"))
+            "armed" -> onMotorsArmed(json.optBoolean("armed"))
             "collapse" -> if (!settings.fullScreen && !binding.addressBar.hasFocus()) setChromeExpanded(false)
             "expand" -> if (!settings.fullScreen && !binding.addressBar.hasFocus()) setChromeExpanded(true)
         }
@@ -251,6 +261,9 @@ class MainActivity : AppCompatActivity(), DevicePicker, FilePicker {
      */
     private fun applyGestureExclusions(rects: JSONArray?) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
+        // The lock claims both edges outright and the page reports on every
+        // scroll, so without this the next report would hand them straight back.
+        if (pageLocked) return
         val density = resources.displayMetrics.density
         val exclusions = buildList {
             for (index in 0 until (rects?.length() ?: 0)) {
@@ -316,7 +329,7 @@ class MainActivity : AppCompatActivity(), DevicePicker, FilePicker {
         }
         menu.add(GROUP_ACTIONS, ID_SCROLL_LOCK, 108, R.string.scroll_lock_toggle).apply {
             isCheckable = true
-            isChecked = scrollLocked
+            isChecked = pageLocked
         }
 
         popup.setOnMenuItemClickListener { item -> onMenuItem(item) }
@@ -333,9 +346,10 @@ class MainActivity : AppCompatActivity(), DevicePicker, FilePicker {
                 binding.webView.reload(); true
             }
             ID_SCROLL_LOCK -> {
-                scrollLocked = !scrollLocked
-                applyScrollLock()
-                toast(getString(if (scrollLocked) R.string.scroll_lock_on else R.string.scroll_lock_off))
+                pageLocked = !pageLocked
+                lockAutoEngaged = false
+                applyPageLock()
+                toast(getString(if (pageLocked) R.string.scroll_lock_on else R.string.scroll_lock_off))
                 true
             }
             ID_OFFLINE -> {
@@ -602,10 +616,66 @@ class MainActivity : AppCompatActivity(), DevicePicker, FilePicker {
      * Not persisted. A browser that would not scroll on the next launch, for a
      * reason set days ago, is a browser that looks broken.
      */
-    private fun applyScrollLock() {
+    /**
+     * Locks the page by itself once a configurator's motors can spin.
+     *
+     * The page reports it, from a structural signal rather than wording: ESC
+     * Configurator's arming checkbox has a stable name, and Betaflight's motor
+     * sliders stop being data-disabled. Nothing else on either site produces it.
+     *
+     * Told, not asked. A modal would be the wrong thing while motors are
+     * spinning — it steals the tap you might need for the stop button — so this
+     * is a message with a way out, not a decision to make.
+     *
+     * The lock is only released again if this is what put it on; a lock the user
+     * set by hand is theirs to remove.
+     */
+    private fun onMotorsArmed(armed: Boolean) {
+        if (armed == lockAutoEngaged && armed == pageLocked) return
+        if (armed) {
+            if (pageLocked) return
+            pageLocked = true
+            lockAutoEngaged = true
+            applyPageLock()
+            Snackbar.make(binding.root, R.string.locked_for_motors, Snackbar.LENGTH_LONG)
+                .setAction(R.string.locked_unlock) {
+                    pageLocked = false
+                    lockAutoEngaged = false
+                    applyPageLock()
+                }
+                .show()
+        } else if (lockAutoEngaged) {
+            pageLocked = false
+            lockAutoEngaged = false
+            applyPageLock()
+            toast(getString(R.string.scroll_lock_off))
+        }
+    }
+
+    private fun applyPageLock() {
         binding.webView.evaluateJavascript(
-            "window.__configuratorSetScrollLock && window.__configuratorSetScrollLock($scrollLocked)",
+            "window.__configuratorSetScrollLock && window.__configuratorSetScrollLock($pageLocked)",
             null,
+        )
+        applyEdgeExclusionForLock()
+    }
+
+    /**
+     * Hands both whole screen edges to the page while it is locked.
+     *
+     * Consuming Back already stops the navigation, but without this the swipe
+     * still animates and the arrow still appears, which looks like the app is
+     * about to leave. Android ignores anything past 200dp per edge, so this asks
+     * for the tallest band it will honour rather than the whole page.
+     */
+    private fun applyEdgeExclusionForLock() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
+        if (!pageLocked) return
+        val band = (24 * resources.displayMetrics.density).toInt()
+        val height = binding.webView.height.coerceAtLeast(1)
+        binding.webView.systemGestureExclusionRects = listOf(
+            Rect(0, 0, band, height),
+            Rect((binding.webView.width - band).coerceAtLeast(0), 0, binding.webView.width, height),
         )
     }
 
@@ -684,7 +754,7 @@ class MainActivity : AppCompatActivity(), DevicePicker, FilePicker {
             binding.addressBar.setText(url)
             updateUsbIndicator()
             warnIfUsbOffForConfigurator()
-            if (scrollLocked) applyScrollLock()
+            if (pageLocked) applyPageLock()
             settings.lastUrl = url
         }
     }

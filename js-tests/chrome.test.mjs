@@ -18,7 +18,7 @@ const CHROME_PATH = path.resolve(HERE, "../app/src/main/assets/bridge/chrome.js"
  */
 
 /** A document mock with just enough surface for the script to install itself. */
-function loadChrome({ head = true, sliders = [] } = {}) {
+function loadChrome({ head = true, sliders = [], armed = {} } = {}) {
     const source = fs.readFileSync(CHROME_PATH, "utf8");
     const appended = [];
     const listeners = new Map();
@@ -39,6 +39,8 @@ function loadChrome({ head = true, sliders = [] } = {}) {
         getElementById: (id) => byId.get(id) ?? null,
         // The edge-slider report walks these looking for ones near a screen edge.
         querySelectorAll: () => sliders,
+        // The arming check asks for one specific control at a time.
+        querySelector: (selector) => armed[selector] ?? null,
         addEventListener: (type, handler) => {
             if (!listeners.has(type)) listeners.set(type, []);
             listeners.get(type).push(handler);
@@ -47,6 +49,7 @@ function loadChrome({ head = true, sliders = [] } = {}) {
 
     const channel = { postMessage: (text) => posted.push(JSON.parse(text)) };
     const timers = [];
+    const intervals = [];
     class FakeEvent {
         constructor(type, init = {}) { Object.assign(this, init); this.type = type; }
     }
@@ -63,6 +66,7 @@ function loadChrome({ head = true, sliders = [] } = {}) {
         // Run frame callbacks straight away so a test sees the report it triggered.
         requestAnimationFrame: (fn) => fn(),
         setTimeout: (fn) => { timers.push(fn); return timers.length; },
+        setInterval: (fn) => { intervals.push(fn); return intervals.length; },
         AndroidBrowserChrome: channel,
     };
     sandbox.globalThis = sandbox;
@@ -75,6 +79,7 @@ function loadChrome({ head = true, sliders = [] } = {}) {
         style: () => appended.find((node) => node.id === "__configurator_slider_css"),
         fire: (type, event) => (listeners.get(type) ?? []).forEach((handler) => handler(event)),
         runTimers: () => timers.splice(0).forEach((fn) => fn()),
+        tick: () => intervals.forEach((fn) => fn()),
         posted,
     };
 }
@@ -426,4 +431,62 @@ test("the lock only bites when the class is present", () => {
     for (const rule of lockRules) {
         assert.ok(rule.includes("html.__configurator_scroll_lock"), `unscoped lock rule: ${rule.trim()}`);
     }
+});
+
+test("unlocking restores the page's own scrolling", () => {
+    // The lock is a class, so removing it leaves no trace — nothing to get
+    // stuck on, which matters for a switch that stops the page moving at all.
+    const chrome = loadChrome();
+    let present = false;
+    chrome.sandbox.document.documentElement.classList = {
+        add: () => { present = true; },
+        remove: () => { present = false; },
+    };
+    chrome.sandbox.__configuratorSetScrollLock(true);
+    assert.equal(present, true);
+    chrome.sandbox.__configuratorSetScrollLock(false);
+    assert.equal(present, false);
+});
+
+const ESC_ARMED = 'input[name="enable-motor-control"]:checked';
+const BF_ARMED = '[role="slider"][aria-orientation="vertical"]:not([data-disabled])';
+
+test("ESC Configurator arming is noticed through its checkbox", () => {
+    // The name is stable; the label is translated into nine languages.
+    const chrome = loadChrome({ armed: { [ESC_ARMED]: {} } });
+    chrome.tick();
+    assert.deepEqual(chrome.posted.filter((m) => m.chrome === "armed"), [{ chrome: "armed", armed: true }]);
+});
+
+test("Betaflight arming is noticed through its sliders becoming enabled", () => {
+    /*
+     * Its switch is an anonymous USwitch among many, but the motor sliders are
+     * the only vertical ones on the page and reka-ui marks them data-disabled
+     * until testing is armed.
+     */
+    const chrome = loadChrome({ armed: { [BF_ARMED]: {} } });
+    chrome.tick();
+    assert.deepEqual(chrome.posted.filter((m) => m.chrome === "armed"), [{ chrome: "armed", armed: true }]);
+});
+
+test("a page with no motor control never reports armed", () => {
+    // ESC Configurator's settings sliders are horizontal, so they cannot trip it.
+    const chrome = loadChrome();
+    chrome.tick();
+    chrome.tick();
+    assert.deepEqual(chrome.posted.filter((m) => m.chrome === "armed"), []);
+});
+
+test("arming is reported once, and disarming is reported too", () => {
+    const state = { [ESC_ARMED]: {} };
+    const chrome = loadChrome({ armed: state });
+    chrome.tick();
+    chrome.tick();
+    delete state[ESC_ARMED];
+    chrome.tick();
+
+    assert.deepEqual(
+        chrome.posted.filter((m) => m.chrome === "armed"),
+        [{ chrome: "armed", armed: true }, { chrome: "armed", armed: false }],
+    );
 });

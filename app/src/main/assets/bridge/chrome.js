@@ -14,6 +14,7 @@
 
     var CHANNEL = "AndroidBrowserChrome";
     var SLOP = 12;
+    var ARMED_POLL_MS = 1000;
 
     if (global.__configuratorChromeInstalled) {
         return;
@@ -331,6 +332,44 @@
             try { reportEdgeSliders(); } catch (e) { /* a page mid-teardown */ }
         });
     }
+
+    /*
+     * Noticing when motors can actually spin.
+     *
+     * Two signals, both structural rather than guessed from wording:
+     *
+     *   ESC Configurator arms with a checkbox that carries a stable name,
+     *   input[name="enable-motor-control"], unaffected by the interface
+     *   language.
+     *
+     *   Betaflight has no such handle — its switch is an anonymous USwitch among
+     *   many — but its motor sliders are the only *vertical* sliders on the page
+     *   and reka-ui marks them data-disabled until testing is armed. A vertical
+     *   slider that is not disabled therefore means the motors are live. ESC
+     *   Configurator's settings sliders are horizontal, so they cannot trip it.
+     *
+     * If either upstream changes shape this stops detecting rather than
+     * misfiring, and the manual lock in the menu still works.
+     */
+    function motorsArmed() {
+        var doc = global.document;
+        try {
+            if (doc.querySelector('input[name="enable-motor-control"]:checked')) return true;
+            if (doc.querySelector('[role="slider"][aria-orientation="vertical"]:not([data-disabled])')) return true;
+        } catch (e) {
+            /* a selector this engine will not parse; treat as not armed */
+        }
+        return false;
+    }
+
+    var lastArmed = false;
+    function checkArmed() {
+        var armed = motorsArmed();
+        if (armed === lastArmed) return;
+        lastArmed = armed;
+        post({ chrome: "armed", armed: armed });
+    }
+    global.setInterval(checkArmed, ARMED_POLL_MS);
 
     var REVEAL_DISTANCE = 48;
     var SLIDER_SELECTOR = '[role="slider"], .input-range, .noUi-target, .MuiSlider-root, .rc-slider, input[type="range"]';
