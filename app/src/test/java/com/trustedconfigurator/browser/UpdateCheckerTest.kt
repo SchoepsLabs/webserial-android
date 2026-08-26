@@ -105,6 +105,14 @@ class UpdateCheckerTest {
         val json = javaClass.classLoader!!.getResourceAsStream("latest-release.json")!!
             .bufferedReader().use { it.readText() }
 
+        /*
+         * 1.5 as well as 1.7: the releases API says 1.5 has 29 downloads and
+         * 1.7 has two, so 1.5 is what people are actually running and 1.5 is
+         * the upgrade that has to work.
+         */
+        assertEquals("1.8", UpdateChecker.parseRelease(json, "1.5")!!.versionName)
+        assertEquals("1.8", UpdateChecker.parseRelease(json, "1.6")!!.versionName)
+
         val update = UpdateChecker.parseRelease(json, "1.7")
 
         assertEquals("1.8", update!!.versionName)
