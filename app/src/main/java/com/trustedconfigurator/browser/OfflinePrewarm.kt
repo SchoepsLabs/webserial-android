@@ -24,6 +24,7 @@ import com.trustedconfigurator.browser.usb.TransferLog
  * Deliberately restrained about it:
  *  - unmetered networks only, so it never spends mobile data
  *  - one site at a time, and it gives up on one that will not load
+ *  - two loads each, because one measurably leaves the cache incomplete
  *  - at most once a week, since a site that is already cached gains nothing
  *  - switchable off, and then it never runs
  */
@@ -70,6 +71,7 @@ class OfflinePrewarm(
         val web = WebView(context)
         val handler = Handler(Looper.getMainLooper())
         var settled = false
+        var pass = 0
 
         fun finishOne(ok: Boolean) {
             if (settled) return
@@ -87,6 +89,20 @@ class OfflinePrewarm(
         web.settings.domStorageEnabled = true
         web.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView?, url: String?) {
+                pass += 1
+                /*
+                 * Two passes, because one measurably is not enough. Loading
+                 * Betaflight once and going offline immediately gives "Web page
+                 * not available"; loading it a second time and then going
+                 * offline renders the whole app. The worker is registered on the
+                 * first visit but has not finished filling its cache, and the
+                 * second load is what gives it the time and the requests to do
+                 * so. ExpressLRS and ESC Configurator behave the same way.
+                 */
+                if (pass < PASSES) {
+                    handler.postDelayed({ if (!settled) view?.reload() }, RELOAD_GAP_MS)
+                    return
+                }
                 TransferLog.record(TransferKind.EVENT, origin, "-", "Offline preload loaded")
                 finishOne(true)
             }
@@ -137,7 +153,11 @@ class OfflinePrewarm(
         }
 
         const val INTERVAL_MS = 7L * 24 * 60 * 60 * 1000
-        const val TIMEOUT_MS = 30_000L
+        const val TIMEOUT_MS = 60_000L
         const val SETTLE_MS = 4_000L
+
+        /** Loads per site; one leaves the cache half filled. See onPageFinished. */
+        const val PASSES = 2
+        const val RELOAD_GAP_MS = 3_000L
     }
 }

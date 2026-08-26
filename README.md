@@ -507,19 +507,36 @@ it.
 
 ### Working offline
 
-Both configurators are progressive web apps, and a WebView runs their service
-workers, so their own caching applies here — no offline mode had to be built.
-Measured by cutting the network at the devtools protocol and doing a full reload
-on `esc-configurator.com`:
+Nothing here implements an offline mode. The configurators are progressive web
+apps, a WebView runs their service workers, and their own caching is what makes
+them work at a field with no signal. The app's job is only to make sure the
+visit that fills that cache has already happened.
 
-```
-navigator.onLine  false
-title             ESC Configurator - for Bluejay, BLHeli_S and AM32
-rendered          port selection, baud rates, Connect, language list
-```
+Measured by cutting the network at the devtools protocol and reloading, on the
+phone, once per site:
 
-The first visit has to be online to populate that cache, and it is the site's
-cache, not the app's — clearing site data clears it.
+| | offline after one visit | after two |
+| --- | --- | --- |
+| Betaflight | fails — *Web page not available* | **works**, 2858 of 2862 characters |
+| ESC Configurator | works | works |
+| ExpressLRS Web Flasher | works | works |
+| AM32 | fails | **still fails** |
+
+Two findings worth keeping.
+
+**One visit is not enough.** Betaflight registers its worker on the first load
+and is already `controller`-backed, but the cache is not filled yet; going
+offline at that point gives the browser's error page. A second load is what
+completes it. The preload therefore loads every site twice — a detail that would
+never have shown up without measuring, since the first visit looks successful in
+every way.
+
+**AM32 cannot do this.** It registers a service worker that never takes control
+— `navigator.serviceWorker.controller` is null on the offline load — so there is
+nothing to serve the page. That is upstream behaviour and not something this app
+can fix from outside. For sites like it, the WebView falls back to its own HTTP
+cache while there is no connection, which covers static assets but is not the
+same guarantee.
 
 ### Gestures the system used to steal
 
