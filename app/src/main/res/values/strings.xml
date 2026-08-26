@@ -61,6 +61,9 @@ The websites this app loads are always current; the app itself is not. Update to
     <string name="update_auto_on">Update checks on — the app asks GitHub once a day</string>
     <string name="update_auto_off">Update checks off — the app no longer asks GitHub about new versions</string>
 
+    <string name="usb_off_here">USB is switched off for this site, so it cannot see your hardware</string>
+    <string name="usb_off_enable">Turn on</string>
+
     <string name="offline_toggle">Keep sites available offline</string>
     <string name="offline_on">Preloading the configurators over Wi-Fi</string>
     <string name="offline_off">Offline preload off. Sites still cache themselves once you open them.</string>

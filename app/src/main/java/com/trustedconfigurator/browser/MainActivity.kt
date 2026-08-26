@@ -6,6 +6,8 @@ import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.hardware.usb.UsbDevice
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.Uri
 import android.graphics.Rect
 import android.os.Build
@@ -272,6 +274,7 @@ class MainActivity : AppCompatActivity(), DevicePicker, FilePicker {
         }
         hideKeyboard()
         binding.addressBar.clearFocus()
+        applyOfflineCacheMode()
         binding.webView.loadUrl(url)
     }
 
@@ -406,12 +409,39 @@ class MainActivity : AppCompatActivity(), DevicePicker, FilePicker {
         binding.exitFullScreen.visibility = if (enabled) android.view.View.VISIBLE else android.view.View.GONE
     }
 
+    /**
+     * Shows whether the page in front of you can reach USB.
+     *
+     * The icon changes shape, not just colour. The same plug tinted red or green
+     * told nobody anything, and the state it has to convey is the difference
+     * between a configurator working and it showing its own "this browser has no
+     * Web Serial" screen.
+     */
     private fun updateUsbIndicator() {
         val allowed = policy.isUsbAllowed(currentOrigin)
+        binding.usbIndicator.setImageResource(if (allowed) R.drawable.ic_usb else R.drawable.ic_usb_off)
         binding.usbIndicator.imageTintList = ContextCompat.getColorStateList(
             this,
             if (allowed) R.color.usb_on else R.color.usb_off,
         )
+        binding.usbIndicator.contentDescription =
+            getString(if (allowed) R.string.usb_on_summary else R.string.usb_off_summary)
+    }
+
+    /**
+     * Says so when a known configurator has been opened with USB switched off.
+     *
+     * Without this the page just shows its own unsupported-browser message and
+     * the app stays silent, which is exactly how a switched-off site was
+     * mistaken for a broken bridge.
+     */
+    private fun warnIfUsbOffForConfigurator() {
+        val origin = currentOrigin ?: return
+        if (policy.isUsbAllowed(origin)) return
+        if (SitePolicy.BUILT_IN.none { it.origin == origin }) return
+        Snackbar.make(binding.root, R.string.usb_off_here, Snackbar.LENGTH_LONG)
+            .setAction(R.string.usb_off_enable) { toggleUsbForCurrentSite() }
+            .show()
     }
 
     private fun toggleUsbForCurrentSite() {
@@ -482,6 +512,27 @@ class MainActivity : AppCompatActivity(), DevicePicker, FilePicker {
      * agent, so overriding the UA here does not change which transport it
      * picks.
      */
+    /**
+     * Falls back to the WebView's own cache when there is no connection.
+     *
+     * A progressive web app brings its own service worker and needs none of
+     * this, but not every tool is one — a plain static site would simply fail at
+     * a field. LOAD_CACHE_ELSE_NETWORK serves whatever was stored on the last
+     * visit instead, which for hashed build assets is the whole page.
+     *
+     * Only while actually offline. Leaving it on would serve yesterday's build
+     * of a configurator that has since been updated, and loading the current
+     * version is the entire point of this app.
+     */
+    private fun applyOfflineCacheMode() {
+        val manager = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+        val network = manager?.activeNetwork
+        val online = manager?.getNetworkCapabilities(network)
+            ?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
+        binding.webView.settings.cacheMode =
+            if (online) WebSettings.LOAD_DEFAULT else WebSettings.LOAD_CACHE_ELSE_NETWORK
+    }
+
     private fun applyDesktopMode() {
         val webSettings = binding.webView.settings
         if (settings.desktopMode) {
@@ -556,6 +607,7 @@ class MainActivity : AppCompatActivity(), DevicePicker, FilePicker {
             currentOrigin = OriginPolicy.normalize(url)
             binding.addressBar.setText(url)
             updateUsbIndicator()
+            warnIfUsbOffForConfigurator()
             settings.lastUrl = url
         }
     }
@@ -740,6 +792,7 @@ class MainActivity : AppCompatActivity(), DevicePicker, FilePicker {
 
     override fun onResume() {
         super.onResume()
+        applyOfflineCacheMode()
         // Sites screen may have changed who can use USB.
         installer.install()
         updateUsbIndicator()
