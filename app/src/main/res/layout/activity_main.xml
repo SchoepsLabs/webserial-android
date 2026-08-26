@@ -88,6 +88,28 @@
 
     </com.google.android.material.appbar.AppBarLayout>
 
+    <!--
+      Emergency stop, shown only while a configurator's motors can actually
+      spin. It presses the page's own stop control, so the site does whatever it
+      normally does; this is only a way to reach it. The page lock that stops
+      the screen moving under a slider can also put that control off-screen.
+    -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/stopMotors"
+        style="@style/Widget.Material3.Button"
+        android:layout_width="wrap_content"
+        android:layout_height="56dp"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginBottom="24dp"
+        android:paddingStart="32dp"
+        android:paddingEnd="32dp"
+        android:text="@string/stop_motors"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        android:visibility="gone"
+        app:backgroundTint="@color/usb_blocked"
+        app:cornerRadius="28dp" />
+
     <!-- Reveals the address bar again when the page is in full screen. -->
     <com.google.android.material.floatingactionbutton.FloatingActionButton
         android:id="@+id/exitFullScreen"

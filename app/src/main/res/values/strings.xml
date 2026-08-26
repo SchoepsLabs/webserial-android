@@ -72,6 +72,9 @@ You can switch it back on here at any time.</string>
     <string name="usb_off_here">USB is switched off for this site, so it cannot see your hardware</string>
     <string name="usb_off_enable">Turn on</string>
 
+    <string name="stop_motors">STOP MOTORS</string>
+    <string name="stop_motors_sent">Stop pressed</string>
+    <string name="stop_motors_failed">Could not find the page\'s stop control — use the one on the page</string>
     <string name="locked_for_motors">Motor control is on — scrolling and the back swipe are locked so the page cannot move under your finger</string>
     <string name="locked_unlock">Unlock</string>
     <string name="locked_back_blocked">Page is locked — unlock it from the menu to go back</string>

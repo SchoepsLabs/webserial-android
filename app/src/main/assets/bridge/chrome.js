@@ -362,6 +362,49 @@
         return false;
     }
 
+    /*
+     * Stops the motors by pressing the page's own control.
+     *
+     * Its own control, not our idea of one: whatever the site does to stop —
+     * the MSP writes, the state cleanup — happens exactly as it would if the
+     * user had reached the button themselves. Betaflight's stopMotors() only
+     * sets motorsTestingEnabled to false, which is what its toolbar button and
+     * its arming switch both do.
+     *
+     * Needed because the lock that keeps the page still can also put that
+     * button off-screen, and "you cannot scroll to the stop button" is a worse
+     * problem than the one the lock solves.
+     *
+     * @return which control was pressed, or "not-found".
+     */
+    global.__configuratorStopMotors = function () {
+        var doc = global.document;
+        var escBox = doc.querySelector('input[name="enable-motor-control"]:checked');
+        if (escBox) {
+            escBox.click();
+            return "esc";
+        }
+        // Betaflight's bottom toolbar: the error-coloured button, live only
+        // while motor testing is on.
+        var stop = doc.querySelector('.toolbar_fixed_bottom button[class*="error"]:not([disabled])');
+        if (stop) {
+            stop.click();
+            return "toolbar";
+        }
+        // Failing that, the switch nearest the live sliders — the arming one.
+        var slider = doc.querySelector('[role="slider"][aria-orientation="vertical"]:not([data-disabled])');
+        var node = slider ? slider.parentElement : null;
+        for (var depth = 0; node && depth < 8; depth++) {
+            var found = node.querySelector('[role="switch"][aria-checked="true"]');
+            if (found) {
+                found.click();
+                return "switch";
+            }
+            node = node.parentElement;
+        }
+        return "not-found";
+    };
+
     var lastArmed = false;
     function checkArmed() {
         var armed = motorsArmed();

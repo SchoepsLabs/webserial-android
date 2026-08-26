@@ -13,6 +13,7 @@ import android.graphics.Rect
 import android.os.Build
 import android.os.Bundle
 import android.view.MenuItem
+import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
@@ -197,6 +198,7 @@ class MainActivity : AppCompatActivity(), DevicePicker, FilePicker {
         }
         binding.menuButton.setOnClickListener { showMenu() }
         binding.usbIndicator.setOnClickListener { onUsbIndicatorTapped() }
+        binding.stopMotors.setOnClickListener { stopMotors() }
         binding.exitFullScreen.setOnClickListener { applyFullScreen(false) }
 
         installScrollReporter()
@@ -631,6 +633,7 @@ class MainActivity : AppCompatActivity(), DevicePicker, FilePicker {
      * set by hand is theirs to remove.
      */
     private fun onMotorsArmed(armed: Boolean) {
+        binding.stopMotors.visibility = if (armed) View.VISIBLE else View.GONE
         if (armed == lockAutoEngaged && armed == pageLocked) return
         if (armed) {
             if (pageLocked) return
@@ -649,6 +652,21 @@ class MainActivity : AppCompatActivity(), DevicePicker, FilePicker {
             lockAutoEngaged = false
             applyPageLock()
             toast(getString(R.string.scroll_lock_off))
+        }
+    }
+
+    /**
+     * Presses the configurator's own stop control.
+     *
+     * Deliberately not our own idea of stopping: whatever the site does — the
+     * MSP writes, the state cleanup — happens exactly as if the button had been
+     * reached by hand. If no control can be found the user is told plainly
+     * rather than left believing the motors were stopped.
+     */
+    private fun stopMotors() {
+        binding.webView.evaluateJavascript("window.__configuratorStopMotors && window.__configuratorStopMotors()") { result ->
+            val found = result != null && !result.contains("not-found") && result != "null"
+            toast(getString(if (found) R.string.stop_motors_sent else R.string.stop_motors_failed))
         }
     }
 

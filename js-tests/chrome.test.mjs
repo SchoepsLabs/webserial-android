@@ -490,3 +490,38 @@ test("arming is reported once, and disarming is reported too", () => {
         [{ chrome: "armed", armed: true }, { chrome: "armed", armed: false }],
     );
 });
+
+/** A clickable element that records the fact. */
+function clickable(clicks, name) {
+    return { click: () => clicks.push(name) };
+}
+
+test("the stop button presses ESC Configurator's own arming checkbox", () => {
+    /*
+     * Its own control, so the site does whatever it normally does on stop —
+     * the serial writes, the state cleanup — rather than our idea of it.
+     */
+    const clicks = [];
+    const chrome = loadChrome({ armed: { 'input[name="enable-motor-control"]:checked': clickable(clicks, "esc") } });
+
+    assert.equal(chrome.sandbox.__configuratorStopMotors(), "esc");
+    assert.deepEqual(clicks, ["esc"]);
+});
+
+test("the stop button presses Betaflight's toolbar stop", () => {
+    // Its bottom toolbar carries an error-coloured button wired to stopMotors(),
+    // live only while motor testing is on.
+    const clicks = [];
+    const chrome = loadChrome({
+        armed: { '.toolbar_fixed_bottom button[class*="error"]:not([disabled])': clickable(clicks, "toolbar") },
+    });
+
+    assert.equal(chrome.sandbox.__configuratorStopMotors(), "toolbar");
+    assert.deepEqual(clicks, ["toolbar"]);
+});
+
+test("a page with no stop control says so rather than pretending", () => {
+    // Reporting success here would leave someone believing the motors stopped.
+    const chrome = loadChrome();
+    assert.equal(chrome.sandbox.__configuratorStopMotors(), "not-found");
+});
