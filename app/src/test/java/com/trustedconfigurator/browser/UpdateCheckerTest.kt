@@ -2,6 +2,7 @@ package com.trustedconfigurator.browser
 
 import com.trustedconfigurator.browser.update.UpdateChecker
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -127,5 +128,44 @@ class UpdateCheckerTest {
 
         assertNull(UpdateChecker.parseRelease(json, "1.8"))
         assertNull(UpdateChecker.parseRelease(json, "1.9"))
+    }
+
+    @Test
+    fun `the dialog gets a reason, not just a version number`() {
+        /*
+         * "A new version exists" is not a reason to do anything. What makes
+         * someone update is knowing what it fixes, and the release already says
+         * so — it simply was not being shown.
+         */
+        val notes = """
+            **Every FPV tool you use, in your pocket.**
+
+            > **Unofficial.** Not affiliated with anyone.
+
+            ## Fixed since 1.5
+
+            - **Sliders you can actually drag** on both configurators
+            - **Scrolling and the back swipe lock** while motors can spin
+            - `STOP MOTORS` button that presses the page's own stop
+
+            | table | row |
+            | --- | --- |
+        """.trimIndent()
+
+        val summary = UpdateChecker.summarise(notes)
+
+        assertTrue(summary.contains("Every FPV tool"))
+        assertTrue(summary.contains("Sliders you can actually drag"))
+        // Markdown furniture would read as damage in a plain AlertDialog.
+        assertFalse(summary.contains("**"))
+        assertFalse(summary.contains("|"))
+        assertFalse(summary.contains("#"))
+        assertFalse(summary.contains("Unofficial"))
+    }
+
+    @Test
+    fun `a release with no notes still shows the plain message`() {
+        assertEquals("", UpdateChecker.summarise(null))
+        assertEquals("", UpdateChecker.summarise("   "))
     }
 }

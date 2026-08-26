@@ -44,6 +44,37 @@ object UpdateChecker {
         return 0
     }
 
+    /**
+     * Pulls a few readable lines out of a release body for the update dialog.
+     *
+     * The dialog used to say only "a new version exists", which is not a reason
+     * to do anything. What makes someone update is knowing what it fixes, and
+     * the release already says so — it just was not being shown.
+     *
+     * Markdown is stripped rather than rendered: an AlertDialog shows plain
+     * text, and half-rendered asterisks read as damage.
+     */
+    fun summarise(notes: String?, maxLines: Int = 6): String {
+        if (notes.isNullOrBlank()) return ""
+        val lines = notes.lineSequence()
+            .map { it.trim() }
+            .filter { line ->
+                line.isNotEmpty() &&
+                    !line.startsWith(">") &&      // block quotes: the disclaimer
+                    !line.startsWith("|") &&      // tables do not survive as text
+                    !line.startsWith("```") &&
+                    !line.startsWith("#")         // headings, kept out of the body
+            }
+            .map { line ->
+                line.removePrefix("- ").removePrefix("* ")
+                    .replace("**", "")
+                    .replace("`", "")
+            }
+            .take(maxLines)
+            .toList()
+        return lines.joinToString("\n")
+    }
+
     private fun parse(version: String?): List<Int> {
         if (version.isNullOrBlank()) return emptyList()
         return version.trim()

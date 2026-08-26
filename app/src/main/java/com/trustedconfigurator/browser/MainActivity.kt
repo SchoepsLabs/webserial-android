@@ -933,7 +933,14 @@ class MainActivity : AppCompatActivity(), DevicePicker, FilePicker {
     private fun showUpdateDialog(update: AvailableUpdate) {
         AlertDialog.Builder(this)
             .setTitle(getString(R.string.update_title, update.versionName))
-            .setMessage(getString(R.string.update_body, BuildConfig.VERSION_NAME))
+            .setMessage(
+                // What the release itself says, ahead of the generic note. "A
+                // new version exists" is not a reason to act; what it fixes is.
+                UpdateChecker.summarise(update.notes)
+                    .takeIf { it.isNotBlank() }
+                    ?.let { it + "\n\n" + getString(R.string.update_body, BuildConfig.VERSION_NAME) }
+                    ?: getString(R.string.update_body, BuildConfig.VERSION_NAME),
+            )
             .setNegativeButton(R.string.update_later) { _, _ ->
                 settings.dismissedUpdate = update.versionName
             }

@@ -48,10 +48,34 @@ tools that were never going to ship an Android app work too.
 > belong to their owners.
 
 <p>
-  <img src="docs/screenshot-browser.png" width="260" alt="A configurator running in the app">
-  <img src="docs/screenshot-picker.png" width="260" alt="Native device picker">
-  <img src="docs/screenshot-diagnostics.png" width="260" alt="USB diagnostics screen">
+  <img src="docs/screenshot-browser.png" width="250" alt="A configurator running in the app">
+  <img src="docs/screenshot-stop-motors.png" width="250" alt="Betaflight's motor tab with the emergency stop button showing">
+  <img src="docs/screenshot-picker.png" width="250" alt="Native device picker">
+  <img src="docs/screenshot-diagnostics.png" width="250" alt="USB diagnostics screen">
 </p>
+
+## Safer than a browser tab, on purpose
+
+Motor testing on a phone is a genuinely dangerous thing to do badly: the
+controls are small, the screen moves, and a propeller does not care. When a
+configurator's motors can actually spin, this app notices and gets out of the
+way of your hands.
+
+| | |
+| --- | --- |
+| **Scrolling and the Android back swipe are locked** | A page that moves under a dragging finger takes the slider with it. On ESC Configurator the sliders reach the screen edge, so a drag there was also a back swipe — and the page left mid-adjustment. |
+| **A large STOP MOTORS button** | It presses the configurator's own stop control, so the site does exactly what it normally does. If it cannot find one it says so, rather than letting you believe the motors stopped. |
+| **The address bar is frozen** | Showing it resizes the page, which slides the sliders under your finger. |
+| **Sliders cannot be turned into text selections** | A long press over live motor controls used to raise Copy / Select all. |
+
+None of this is guessed from wording: ESC Configurator's arming checkbox has a
+stable name, and Betaflight's motor sliders stop being marked disabled. If
+either changes shape the detection stops rather than misfires, and the manual
+lock in the menu still works.
+
+Betaflight already blocks the scroll wheel over its motor test on desktop, "so
+the page cannot scroll out from under the pointer while the motors can spin".
+There was never a touch equivalent, and on a phone touch is all there is.
 
 ## Install
 
