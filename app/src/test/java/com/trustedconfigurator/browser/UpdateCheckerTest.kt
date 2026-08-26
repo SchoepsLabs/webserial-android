@@ -93,4 +93,31 @@ class UpdateCheckerTest {
         val json = """{"tag_name":"v1.5","html_url":"https://example.test","draft":false,"prerelease":false}"""
         assertEquals("v1.5", UpdateChecker.parseRelease(json, "1.2")!!.title)
     }
+
+    @Test
+    fun `the release GitHub actually serves is offered to an older install`() {
+        /*
+         * The fixture is the real payload from the releases API, trimmed to the
+         * fields the parser reads. A hand-written one only proves the parser
+         * agrees with itself; this proves it agrees with GitHub — the shape that
+         * decides whether anyone ever hears about an update.
+         */
+        val json = javaClass.classLoader!!.getResourceAsStream("latest-release.json")!!
+            .bufferedReader().use { it.readText() }
+
+        val update = UpdateChecker.parseRelease(json, "1.7")
+
+        assertEquals("1.8", update!!.versionName)
+        assertTrue(update.pageUrl.startsWith("https://github.com/"))
+        assertTrue(update.title.isNotBlank())
+    }
+
+    @Test
+    fun `the same release is not offered to someone already running it`() {
+        val json = javaClass.classLoader!!.getResourceAsStream("latest-release.json")!!
+            .bufferedReader().use { it.readText() }
+
+        assertNull(UpdateChecker.parseRelease(json, "1.8"))
+        assertNull(UpdateChecker.parseRelease(json, "1.9"))
+    }
 }
