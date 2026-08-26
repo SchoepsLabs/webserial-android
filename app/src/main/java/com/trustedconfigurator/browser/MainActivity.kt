@@ -657,9 +657,21 @@ class MainActivity : AppCompatActivity(), DevicePicker, FilePicker {
         binding.stopMotors.visibility = if (armed) View.VISIBLE else View.GONE
         if (armed == backLockedForMotors) return
         backLockedForMotors = armed
-        applyEdgeExclusionForLock()
+        /*
+         * The whole page, not only the back gesture. Scrolling moves the sliders
+         * under whatever finger is on one, which is the same failure as
+         * navigating away: the screen shifting mid-adjustment. Unlock is one tap
+         * away for when the configurator's own toolbar is covering a motor.
+         */
+        pageLocked = armed
+        applyPageLock()
         if (armed) {
-            Snackbar.make(binding.root, R.string.locked_for_motors, Snackbar.LENGTH_LONG).show()
+            Snackbar.make(binding.root, R.string.locked_for_motors, Snackbar.LENGTH_LONG)
+                .setAction(R.string.locked_unlock) {
+                    pageLocked = false
+                    applyPageLock()
+                }
+                .show()
         }
     }
 

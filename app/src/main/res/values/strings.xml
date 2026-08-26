@@ -75,7 +75,7 @@ You can switch it back on here at any time.</string>
     <string name="stop_motors">STOP MOTORS</string>
     <string name="stop_motors_sent">Stop pressed</string>
     <string name="stop_motors_failed">Could not find the page\'s stop control — use the one on the page</string>
-    <string name="locked_for_motors">Motor control is on — the back swipe is off so a slider drag at the edge cannot leave the page</string>
+    <string name="locked_for_motors">Motor control is on — scrolling and the back swipe are locked so the page cannot move under your finger</string>
     <string name="locked_unlock">Unlock</string>
     <string name="locked_back_blocked">Back is off while motors can spin. Stop the motors, or unlock from the menu.</string>
     <string name="scroll_lock_toggle">Lock page (motor test)</string>
