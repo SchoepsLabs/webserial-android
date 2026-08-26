@@ -525,3 +525,53 @@ test("a page with no stop control says so rather than pretending", () => {
     const chrome = loadChrome();
     assert.equal(chrome.sandbox.__configuratorStopMotors(), "not-found");
 });
+
+/** A touch at a horizontal position, with a cancelable flag for touchmove. */
+function edgeTouch(x, cancelable = true) {
+    let prevented = false;
+    return {
+        event: { touches: [{ clientX: x, clientY: 400 }], cancelable, preventDefault: () => { prevented = true; } },
+        wasPrevented: () => prevented,
+    };
+}
+
+test("while motors are armed, a drag starting at the edge scrolls nothing", () => {
+    /*
+     * Blocking the back gesture only stopped Android navigating; the page then
+     * scrolled instead, which shifts the sliders under the finger exactly as
+     * leaving the page would have. Both are the same failure.
+     */
+    const chrome = loadChrome({ armed: { 'input[name="enable-motor-control"]:checked': {} } });
+    chrome.tick(); // notice the arming
+
+    const start = edgeTouch(8);
+    chrome.fire("touchstart", start.event);
+    const move = edgeTouch(8);
+    chrome.fire("touchmove", move.event);
+
+    assert.equal(move.wasPrevented(), true, "an edge drag was allowed to scroll the page");
+});
+
+test("the middle of the page still scrolls while armed", () => {
+    // The lowest motor sits under the configurator's own toolbar on a short
+    // screen; a page that cannot scroll is a page where it cannot be seen.
+    const chrome = loadChrome({ armed: { 'input[name="enable-motor-control"]:checked': {} } });
+    chrome.tick();
+
+    chrome.fire("touchstart", edgeTouch(200).event);
+    const move = edgeTouch(200);
+    chrome.fire("touchmove", move.event);
+
+    assert.equal(move.wasPrevented(), false, "the middle of the page stopped scrolling");
+});
+
+test("an edge drag scrolls normally when nothing is armed", () => {
+    const chrome = loadChrome();
+    chrome.tick();
+
+    chrome.fire("touchstart", edgeTouch(8).event);
+    const move = edgeTouch(8);
+    chrome.fire("touchmove", move.event);
+
+    assert.equal(move.wasPrevented(), false, "edge scrolling was blocked with no motors armed");
+});

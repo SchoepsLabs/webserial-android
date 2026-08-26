@@ -405,6 +405,38 @@
         return "not-found";
     };
 
+    /*
+     * A drag that starts at a screen edge does nothing while motors are armed.
+     *
+     * Taking the back gesture away was only half of it: Android stopped
+     * navigating, and the page scrolled instead, which moves the sliders under
+     * the finger exactly as leaving the page would have. Both are the same
+     * failure — the screen shifting mid-adjustment.
+     *
+     * Only for gestures that *begin* in the edge band, so the rest of the page
+     * still scrolls and the lowest motor can still be brought out from under
+     * the configurator's own toolbar. The slider's own handlers see every one
+     * of these events; only the browser's scrolling is refused.
+     */
+    var edgeGesture = false;
+
+    function onEdgeTouchStart(event) {
+        var touch = event.touches && event.touches[0];
+        var width = global.innerWidth || 0;
+        edgeGesture = !!(lastArmed && touch &&
+            (touch.clientX <= EDGE_BAND || touch.clientX >= width - EDGE_BAND));
+    }
+
+    function onEdgeTouchMove(event) {
+        if (edgeGesture && event.cancelable) {
+            event.preventDefault();
+        }
+    }
+
+    global.document.addEventListener("touchstart", onEdgeTouchStart, { passive: true, capture: true });
+    // Not passive: refusing the scroll is the entire point.
+    global.document.addEventListener("touchmove", onEdgeTouchMove, { passive: false, capture: true });
+
     var lastArmed = false;
     function checkArmed() {
         var armed = motorsArmed();
